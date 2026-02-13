@@ -6,28 +6,28 @@ This implementation plan breaks down the Phase 1 infrastructure setup into discr
 
 ## Tasks
 
-- [ ] 1. Initialize repository structure and tooling
-  - [ ] 1.1 Create infrastructure repository directory structure
+- [x] 1. Initialize repository structure and tooling
+  - [x] 1.1 Create infrastructure repository directory structure
     - Create `modules/`, `environments/`, `kubernetes/`, `scripts/`, `.github/workflows/` directories
     - Create `.terraform-version` file with version `1.9.0`
     - Create `.tflint.hcl` with recommended rules from steering file
     - Create `.pre-commit-config.yaml` with terraform hooks
     - _Requirements: 1.1, 1.2, 33.5, 33.6_
   
-  - [ ] 1.2 Create Terraform backend configuration
+  - [x] 1.2 Create Terraform backend configuration
     - Create `environments/shared/backend.tf` with Spaces S3-compatible backend
     - Create `environments/production/backend.tf` with separate state key
     - Configure `skip_credentials_validation`, `skip_metadata_api_check`, `skip_requesting_account_id`, `skip_s3_checksum`
     - _Requirements: 12.1, 12.2, 12.3, 12.5_
 
-  - [ ] 1.3 Create versions.tf files for environments
+  - [x] 1.3 Create versions.tf files for environments
     - Create `environments/shared/versions.tf` with provider constraints
     - Create `environments/production/versions.tf` with provider constraints
     - Pin Terraform `>= 1.5.0`, DigitalOcean `~> 2.75`, Kubernetes `~> 2.35`, Helm `~> 2.17`
     - _Requirements: 33.1, 33.2, 33.3, 33.4_
 
-- [ ] 2. Implement VPC module
-  - [ ] 2.1 Create VPC module structure
+- [x] 2. Implement VPC module
+  - [x] 2.1 Create VPC module structure
     - Create `modules/vpc/main.tf` with `digitalocean_vpc` resource
     - Create `modules/vpc/variables.tf` with `create`, `vpc_name`, `region`, `ip_range`, `description`, `tags`
     - Create `modules/vpc/outputs.tf` with `vpc_id`, `vpc_urn` using `try()` for safe access
@@ -36,7 +36,7 @@ This implementation plan breaks down the Phase 1 infrastructure setup into discr
     - Implement default tags: `managed-by:terraform`, `project:court-booking`, `environment:{env}`
     - _Requirements: 1.3, 1.4, 1.5, 1.6, 1.7, 2.1, 2.2, 2.3, 2.4, 3.1, 3.4, 3.5, 21.1, 21.2, 21.3_
 
-  - [ ]* 2.2 Write property test for VPC module structure
+  - [x] 2.2 Write property test for VPC module structure
     - Verify module contains required files (main.tf, variables.tf, outputs.tf, versions.tf, README.md)
     - Verify `create` variable exists with type `bool` and default `true`
     - Verify outputs use `try()` function
@@ -44,8 +44,8 @@ This implementation plan breaks down the Phase 1 infrastructure setup into discr
     - **Property 2: Conditional Creation Pattern Compliance**
     - **Validates: Requirements 1.3, 2.1, 2.2, 2.3, 2.4**
 
-- [ ] 3. Implement DOKS cluster module
-  - [ ] 3.1 Create DOKS cluster module structure
+- [x] 3. Implement DOKS cluster module
+  - [x] 3.1 Create DOKS cluster module structure
     - Create `modules/doks-cluster/main.tf` with `digitalocean_kubernetes_cluster` resource
     - Implement default node pool with autoscaling support
     - Implement `lifecycle { ignore_changes = [version] }` for version drift prevention
@@ -55,13 +55,13 @@ This implementation plan breaks down the Phase 1 infrastructure setup into discr
     - Create `modules/doks-cluster/versions.tf` and `README.md`
     - _Requirements: 4.1, 4.2, 4.6, 4.7, 4.8, 4.9, 4.10, 4.11_
 
-  - [ ] 3.2 Add additional node pools support
+  - [x] 3.2 Add additional node pools support
     - Implement `digitalocean_kubernetes_node_pool` resource with `for_each`
     - Support taints, labels, and autoscaling per pool
     - Configure observability node pool for production
     - _Requirements: 4.3, 4.6_
 
-  - [ ]* 3.3 Write property test for DOKS module
+  - [x] 3.3 Write property test for DOKS module
     - Verify module structure compliance
     - Verify conditional creation pattern
     - Verify naming conventions (underscores for identifiers)
@@ -69,8 +69,8 @@ This implementation plan breaks down the Phase 1 infrastructure setup into discr
     - **Property 3: Terraform Identifier Naming Convention**
     - **Validates: Requirements 1.3, 1.8, 2.1**
 
-- [ ] 4. Implement managed PostgreSQL module
-  - [ ] 4.1 Create PostgreSQL module structure
+- [x] 4. Implement managed PostgreSQL module
+  - [x] 4.1 Create PostgreSQL module structure
     - Create `modules/managed-postgres/main.tf` with `digitalocean_database_cluster` resource
     - Configure engine `pg`, version 16, VPC association
     - Create separate databases: `platform`, `transaction`
@@ -79,24 +79,24 @@ This implementation plan breaks down the Phase 1 infrastructure setup into discr
     - Create `modules/managed-postgres/outputs.tf` with connection details (marked sensitive)
     - _Requirements: 5.1, 5.2, 5.5, 5.6, 5.8, 5.9_
 
-  - [ ] 4.2 Add read replica support
+  - [x] 4.2 Add read replica support
     - Implement `digitalocean_database_replica` resource with conditional creation
     - Output replica connection details separately
     - _Requirements: 5.4, 5.10_
 
-  - [ ] 4.3 Add database firewall rules
+  - [x] 4.3 Add database firewall rules
     - Implement `digitalocean_database_firewall` resource
     - Configure rules to allow only DOKS cluster access (type `k8s`)
     - _Requirements: 5.7, 20.1, 20.3, 20.4_
 
-  - [ ]* 4.4 Write property test for PostgreSQL module
+  - [x] 4.4 Write property test for PostgreSQL module
     - Verify firewall rules only allow k8s type
     - Verify no public access rules exist
     - **Property 6: Database Firewall Isolation**
     - **Validates: Requirements 20.1, 20.2, 20.3, 20.4**
 
-- [ ] 5. Implement managed Redis module
-  - [ ] 5.1 Create Redis module structure
+- [x] 5. Implement managed Redis module
+  - [x] 5.1 Create Redis module structure
     - Create `modules/managed-redis/main.tf` with `digitalocean_database_cluster` resource
     - Configure engine `redis`, version 7, VPC association
     - Configure eviction policy `allkeys_lru`
@@ -104,7 +104,7 @@ This implementation plan breaks down the Phase 1 infrastructure setup into discr
     - Create `modules/managed-redis/outputs.tf` with connection details (marked sensitive)
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.6_
 
-  - [ ] 5.2 Add Redis firewall rules
+  - [x] 5.2 Add Redis firewall rules
     - Implement `digitalocean_database_firewall` resource
     - Configure rules to allow only DOKS cluster access
     - _Requirements: 6.5, 20.2_
