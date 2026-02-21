@@ -6,21 +6,44 @@ Dependencies flow downward — later phases build on earlier ones.
 
 ---
 
-## Phase 1 — Foundation & Infrastructure
+## Phase 1a — Foundation Infrastructure
 
-**Target repos:** `court-booking-infrastructure`, `court-booking-platform-service`, `court-booking-transaction-service`, `court-booking-common`
+**Target repos:** `court-booking-infrastructure`
+
+**Spec:** `.kiro/specs/phase-1-foundation-infrastructure/`
 
 **Scope:**
-- Terraform modules for DigitalOcean (DOKS, Managed PostgreSQL + PostGIS, Managed Redis, Spaces, Container Registry, VPC, Load Balancer, DNS)
-- Kubernetes manifests, NGINX Ingress Controller, namespace setup (dev/test/staging/production)
-- CI/CD pipelines in GitHub Actions for both services (build, test, scan with Trivy, push to DOCR, deploy)
-- Docker Compose for local development (PostgreSQL, Redis, Kafka)
-- Database schema migrations (Flyway) — initial tables for both platform and transaction schemas
-- Shared common library setup (`court-booking-common`) with Maven/GitHub Packages
-- Spring Boot project scaffolding for both services (profiles, actuator health endpoints)
-- External Secrets Operator / Sealed Secrets for secret management
+- Terraform modules for DigitalOcean (DOKS, Managed PostgreSQL + PostGIS, Managed Redis, Spaces, Container Registry, VPC, DNS, Project)
+- Environment compositions (shared + production) with Terraform state management
+- Kubernetes manifests, NGINX Ingress Controller, cert-manager, Sealed Secrets, namespace setup (dev/test/staging/production)
+- Kustomize base/overlays structure with Helm values for observability stack
+- CI/CD pipelines in GitHub Actions for Terraform (plan on PR, deploy on merge with approval gates)
+- Docker Compose for local development (PostgreSQL + PostGIS, Redis, Kafka in KRaft mode)
+- Operational scripts (backup verification, secret rotation, cluster maintenance)
+- Validation scripts (module structure, naming conventions, resource tagging)
+- External services setup documentation (Redpanda, Stripe, SendGrid, FCM, OpenWeatherMap, OAuth providers)
 
-**Deliverable:** Both services running on DOKS (empty but healthy), CI/CD green, local dev environment working.
+**Deliverable:** All infrastructure provisioned and validated. DOKS clusters, managed databases, container registry, and CI/CD pipelines ready for service deployment.
+
+---
+
+## Phase 1b — Service Scaffolding
+
+**Target repos:** `court-booking-platform-service`, `court-booking-transaction-service`, `court-booking-common`
+
+**Spec:** `.kiro/specs/phase-1b-service-scaffolding/`
+
+**Scope:**
+- Shared common library setup (`court-booking-common`) with Maven/GitHub Packages — DTOs, Kafka event classes, exceptions, utilities
+- Spring Boot project scaffolding for both services (hexagonal architecture, profiles, actuator health endpoints)
+- Database schema migrations (Flyway) — initial tables for both platform and transaction schemas, cross-schema views
+- CI/CD pipelines in GitHub Actions for both services (build, test, scan with Trivy, push to DOCR, deploy with approval gates)
+- Kubernetes deployment manifests for both services (Deployments, Services, Ingress, ConfigMaps)
+- Dockerfiles for both services (multi-stage builds)
+- Spring profiles configuration (local, dev, staging, prod)
+- Cross-repo QA trigger integration
+
+**Deliverable:** Both services running on DOKS (empty but healthy), CI/CD green, local dev environment working, Flyway migrations applied.
 
 ---
 
@@ -262,16 +285,17 @@ Dependencies flow downward — later phases build on earlier ones.
 Some phases can overlap:
 
 ```
-Phase 1 ──────►
-Phase 2 ────────────►
-Phase 3   ────────────────►
-Phase 4        ────────────────►
-Phase 5             ──────────────►
-Phase 6                  ──────────────►
-Phase 7                       ──────────────►
-Phase 8        ════════════════════════════════► (parallel, starts after Phase 2-4 APIs stable)
-Phase 9                            ──────────────►
-Phase 10                                    ──────────────►
+Phase 1a ─────►
+Phase 1b ──────────►
+Phase 2   ────────────►
+Phase 3     ────────────────►
+Phase 4          ────────────────►
+Phase 5               ──────────────►
+Phase 6                    ──────────────►
+Phase 7                         ──────────────►
+Phase 8          ════════════════════════════════► (parallel, starts after Phase 2-4 APIs stable)
+Phase 9                              ──────────────►
+Phase 10                                      ──────────────►
 ```
 
 ## Spec Creation Strategy
