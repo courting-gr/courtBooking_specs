@@ -10,7 +10,7 @@ This document scopes requirements specifically to service scaffolding concerns â
 
 - **Platform_Service**: Spring Boot application (`court-booking-platform-service`) responsible for authentication, users, courts, availability, and analytics. Owns the `platform` PostgreSQL schema.
 - **Transaction_Service**: Spring Boot application (`court-booking-transaction-service`) responsible for bookings, payments, notifications, and scheduled jobs. Owns the `transaction` PostgreSQL schema.
-- **Common_Library**: Shared Java library (`court-booking-common`) published to GitHub Packages, consumed as a Maven dependency by both services. Contains DTOs, Kafka event classes, exception types, and utilities.
+- **Common_Library**: Shared Java library (`court-booking-common`) published to GitHub Packages, consumed as a Gradle dependency by both services. Contains DTOs, Kafka event classes, exception types, and utilities.
 - **Flyway**: Database migration tool that manages versioned SQL scripts per service, per schema.
 - **DOKS**: DigitalOcean Kubernetes Service â€” the managed Kubernetes cluster where services are deployed.
 - **DOCR**: DigitalOcean Container Registry â€” private Docker image storage for service images.
@@ -34,10 +34,10 @@ This document scopes requirements specifically to service scaffolding concerns â
 
 #### Acceptance Criteria
 
-1. THE Common_Library SHALL be a Maven project with `groupId` `gr.courtbooking`, `artifactId` `court-booking-common`, and Java 21 source/target compatibility.
+1. THE Common_Library SHALL be a Gradle project with `group` `gr.courtbooking`, `name` `court-booking-common`, and Java 21 source/target compatibility using Kotlin DSL (`build.gradle.kts`).
 2. THE Common_Library SHALL declare Spring Boot starter dependencies as `provided` scope so consuming services control their own Spring Boot version.
-3. WHEN the Common_Library is built, THE Maven build SHALL produce a JAR artifact suitable for publishing to GitHub Packages.
-4. THE Common_Library SHALL include a `distributionManagement` section in `pom.xml` configured for GitHub Packages under the repository owner's namespace.
+3. WHEN the Common_Library is built, THE Gradle build SHALL produce a JAR artifact suitable for publishing to GitHub Packages.
+4. THE Common_Library SHALL include a `publishing` block in `build.gradle.kts` configured for GitHub Packages under the repository owner's namespace using the `maven-publish` plugin.
 5. THE Common_Library SHALL define a base package structure under `gr.courtbooking.common` with sub-packages: `dto`, `event`, `exception`, and `util`.
 
 ### Requirement 2: Common Library â€” DTO Classes
@@ -76,7 +76,7 @@ This document scopes requirements specifically to service scaffolding concerns â
 
 ### Requirement 5: Common Library â€” Publishing to GitHub Packages
 
-**User Story:** As a developer, I want the common library published to GitHub Packages via CI/CD, so that both services can consume it as a versioned Maven dependency.
+**User Story:** As a developer, I want the common library published to GitHub Packages via CI/CD, so that both services can consume it as a versioned Gradle dependency.
 
 #### Acceptance Criteria
 
@@ -84,7 +84,7 @@ This document scopes requirements specifically to service scaffolding concerns â
 2. THE Common_Library SHALL use semantic versioning (major.minor.patch) for artifact versions.
 3. WHEN a pull request is opened against the Common_Library repository, THE CI_CD_Pipeline SHALL compile the library and run all tests without publishing.
 4. THE Common_Library SHALL include a GitHub Actions workflow file at `.github/workflows/ci.yml` that performs build, test, and conditional publish steps.
-5. WHEN both services declare the Common_Library as a Maven dependency, THE Maven build SHALL resolve the artifact from GitHub Packages using repository credentials.
+5. WHEN both services declare the Common_Library as a Gradle dependency, THE Gradle build SHALL resolve the artifact from GitHub Packages using repository credentials.
 
 ### Requirement 6: Spring Boot Project Scaffolding â€” Platform Service
 
@@ -92,8 +92,8 @@ This document scopes requirements specifically to service scaffolding concerns â
 
 #### Acceptance Criteria
 
-1. THE Platform_Service SHALL be a Maven project with `groupId` `gr.courtbooking`, `artifactId` `court-booking-platform-service`, Spring Boot 3.x parent, and Java 21 source/target compatibility.
-2. THE Platform_Service SHALL declare Maven dependencies for: Spring Boot Web, Spring Boot Actuator, Spring Boot Data JPA, Spring Boot Data Redis, Spring Kafka, Flyway Core, PostgreSQL driver, PostGIS Hibernate Spatial dialect, springdoc-openapi, jqwik (test scope), and the Common_Library.
+1. THE Platform_Service SHALL be a Gradle project with `group` `gr.courtbooking`, `name` `court-booking-platform-service`, Spring Boot 3.x plugin, and Java 21 source/target compatibility using Kotlin DSL (`build.gradle.kts`).
+2. THE Platform_Service SHALL declare Gradle dependencies for: Spring Boot Web, Spring Boot Actuator, Spring Boot Data JPA, Spring Boot Data Redis, Spring Kafka, Flyway Core, PostgreSQL driver, PostGIS Hibernate Spatial dialect, springdoc-openapi, jqwik (test implementation), and the Common_Library.
 3. THE Platform_Service SHALL organize source code in a hexagonal architecture package structure under `gr.courtbooking.platform` with sub-packages: `domain` (entities, value objects), `domain.port.in` (use case interfaces), `domain.port.out` (repository interfaces), `application` (use case implementations), `adapter.in.web` (REST controllers), `adapter.in.kafka` (Kafka consumers), `adapter.out.persistence` (JPA repositories), `adapter.out.kafka` (Kafka producers), `adapter.out.redis` (Redis adapters), and `config` (Spring configuration classes).
 4. THE Platform_Service SHALL include a Spring Boot main application class annotated with `@SpringBootApplication`.
 5. THE Platform_Service SHALL include a placeholder REST controller at `/api/health/info` returning a JSON response with service name and version for manual verification.
@@ -104,8 +104,8 @@ This document scopes requirements specifically to service scaffolding concerns â
 
 #### Acceptance Criteria
 
-1. THE Transaction_Service SHALL be a Maven project with `groupId` `gr.courtbooking`, `artifactId` `court-booking-transaction-service`, Spring Boot 3.x parent, and Java 21 source/target compatibility.
-2. THE Transaction_Service SHALL declare Maven dependencies for: Spring Boot Web, Spring Boot Actuator, Spring Boot Data JPA, Spring Boot Data Redis, Spring Boot WebSocket, Spring Kafka, Flyway Core, PostgreSQL driver, Quartz Scheduler, springdoc-openapi, jqwik (test scope), and the Common_Library.
+1. THE Transaction_Service SHALL be a Gradle project with `group` `gr.courtbooking`, `name` `court-booking-transaction-service`, Spring Boot 3.x plugin, and Java 21 source/target compatibility using Kotlin DSL (`build.gradle.kts`).
+2. THE Transaction_Service SHALL declare Gradle dependencies for: Spring Boot Web, Spring Boot Actuator, Spring Boot Data JPA, Spring Boot Data Redis, Spring Boot WebSocket, Spring Kafka, Flyway Core, PostgreSQL driver, Quartz Scheduler, springdoc-openapi, jqwik (test implementation), and the Common_Library.
 3. THE Transaction_Service SHALL organize source code in a hexagonal architecture package structure under `gr.courtbooking.transaction` with sub-packages: `domain` (entities, value objects), `domain.port.in` (use case interfaces), `domain.port.out` (repository interfaces), `application` (use case implementations), `adapter.in.web` (REST controllers), `adapter.in.kafka` (Kafka consumers), `adapter.in.websocket` (WebSocket handlers), `adapter.out.persistence` (JPA repositories), `adapter.out.kafka` (Kafka producers), `adapter.out.redis` (Redis adapters), `adapter.out.stripe` (Stripe client adapter), and `config` (Spring configuration classes).
 4. THE Transaction_Service SHALL include a Spring Boot main application class annotated with `@SpringBootApplication`.
 5. THE Transaction_Service SHALL include a placeholder REST controller at `/api/health/info` returning a JSON response with service name and version for manual verification.
@@ -177,9 +177,9 @@ This document scopes requirements specifically to service scaffolding concerns â
 
 #### Acceptance Criteria
 
-1. THE Platform_Service SHALL include a `Dockerfile` at the repository root that uses a multi-stage build: a Maven build stage (Java 21 base) and a runtime stage (Eclipse Temurin 21 JRE slim base).
-2. THE Transaction_Service SHALL include a `Dockerfile` at the repository root that uses a multi-stage build: a Maven build stage (Java 21 base) and a runtime stage (Eclipse Temurin 21 JRE slim base).
-3. WHEN the build stage executes, THE Dockerfile SHALL copy `pom.xml` first and resolve dependencies before copying source code, to maximize Docker layer caching.
+1. THE Platform_Service SHALL include a `Dockerfile` at the repository root that uses a multi-stage build: a Gradle build stage (Java 21 base with gradle:8.5-jdk21) and a runtime stage (Eclipse Temurin 21 JRE slim base).
+2. THE Transaction_Service SHALL include a `Dockerfile` at the repository root that uses a multi-stage build: a Gradle build stage (Java 21 base with gradle:8.5-jdk21) and a runtime stage (Eclipse Temurin 21 JRE slim base).
+3. WHEN the build stage executes, THE Dockerfile SHALL copy `build.gradle.kts` and `settings.gradle.kts` first and resolve dependencies before copying source code, to maximize Docker layer caching.
 4. THE runtime stage SHALL run the application as a non-root user for security.
 5. THE runtime stage SHALL expose port 8080 and set the Spring Boot server port to 8080.
 6. THE runtime stage SHALL configure JVM memory settings via `JAVA_OPTS` environment variable with sensible defaults for container environments (e.g., `-XX:MaxRAMPercentage=75.0`).
@@ -192,7 +192,7 @@ This document scopes requirements specifically to service scaffolding concerns â
 #### Acceptance Criteria
 
 1. THE Platform_Service SHALL include a GitHub Actions workflow at `.github/workflows/ci.yml` triggered on pull requests to the `develop` and `main` branches.
-2. WHEN a pull request is opened, THE CI_CD_Pipeline SHALL execute: checkout, Java 21 setup, Maven dependency resolution (with GitHub Packages authentication for Common_Library), compile, unit tests, property-based tests (jqwik), Flyway migration validation (`flyway validate` against a temporary PostgreSQL container), and container image vulnerability scan (Trivy).
+2. WHEN a pull request is opened, THE CI_CD_Pipeline SHALL execute: checkout, Java 21 setup, Gradle dependency resolution (with GitHub Packages authentication for Common_Library), compile, unit tests, property-based tests (jqwik), Flyway migration validation (`flyway validate` against a temporary PostgreSQL container), and container image vulnerability scan (Trivy).
 3. THE Platform_Service SHALL include a GitHub Actions workflow at `.github/workflows/deploy.yml` triggered on push to the `develop` branch.
 4. WHEN code is pushed to `develop`, THE CI_CD_Pipeline SHALL build a Docker image, tag it with the Git commit SHA, push it to DOCR, and deploy to the `dev` Kubernetes namespace.
 5. WHEN the `dev` deployment succeeds, THE CI_CD_Pipeline SHALL automatically deploy to the `test` Kubernetes namespace.
@@ -209,7 +209,7 @@ This document scopes requirements specifically to service scaffolding concerns â
 #### Acceptance Criteria
 
 1. THE Transaction_Service SHALL include a GitHub Actions workflow at `.github/workflows/ci.yml` triggered on pull requests to the `develop` and `main` branches.
-2. WHEN a pull request is opened, THE CI_CD_Pipeline SHALL execute: checkout, Java 21 setup, Maven dependency resolution (with GitHub Packages authentication for Common_Library), compile, unit tests, property-based tests (jqwik), Flyway migration validation (`flyway validate` against a temporary PostgreSQL container), and container image vulnerability scan (Trivy).
+2. WHEN a pull request is opened, THE CI_CD_Pipeline SHALL execute: checkout, Java 21 setup, Gradle dependency resolution (with GitHub Packages authentication for Common_Library), compile, unit tests, property-based tests (jqwik), Flyway migration validation (`flyway validate` against a temporary PostgreSQL container), and container image vulnerability scan (Trivy).
 3. THE Transaction_Service SHALL include a GitHub Actions workflow at `.github/workflows/deploy.yml` triggered on push to the `develop` branch.
 4. WHEN code is pushed to `develop`, THE CI_CD_Pipeline SHALL build a Docker image, tag it with the Git commit SHA, push it to DOCR, and deploy to the `dev` Kubernetes namespace.
 5. WHEN the `dev` deployment succeeds, THE CI_CD_Pipeline SHALL automatically deploy to the `test` Kubernetes namespace.
@@ -315,17 +315,17 @@ This document scopes requirements specifically to service scaffolding concerns â
 3. WHEN either service is deployed to the `staging` environment, THE CI_CD_Pipeline SHALL trigger the `court-booking-qa` repository's `run-staging-validation` workflow via `repository_dispatch` with the same payload structure.
 4. THE CI_CD_Pipeline SHALL use the `peter-evans/repository-dispatch@v3` GitHub Action with a `QA_DISPATCH_TOKEN` secret (GitHub PAT with `repo` scope) for cross-repo dispatch.
 
-### Requirement 23: Maven Build Configuration Consistency
+### Requirement 23: Gradle Build Configuration Consistency
 
-**User Story:** As a developer, I want consistent Maven build configuration across all three repositories, so that builds are reproducible and dependency versions are aligned.
+**User Story:** As a developer, I want consistent Gradle build configuration across all three repositories, so that builds are reproducible and dependency versions are aligned.
 
 #### Acceptance Criteria
 
-1. THE Platform_Service and Transaction_Service SHALL use the same Spring Boot parent version (3.x latest stable) and Java 21 compiler settings.
-2. THE Platform_Service and Transaction_Service SHALL declare the Common_Library dependency with a specific version (not SNAPSHOT for releases) and configure the GitHub Packages Maven repository for resolution.
-3. THE Platform_Service and Transaction_Service SHALL include the `maven-surefire-plugin` configured to run both JUnit 5 and jqwik property-based tests.
-4. THE Platform_Service and Transaction_Service SHALL include the `spring-boot-maven-plugin` for building executable JARs.
-5. THE Common_Library, Platform_Service, and Transaction_Service SHALL all use the same Java 21 source and target compatibility settings.
+1. THE Platform_Service and Transaction_Service SHALL use the same Spring Boot plugin version (3.x latest stable) and Java 21 compiler settings.
+2. THE Platform_Service and Transaction_Service SHALL declare the Common_Library dependency with a specific version (not SNAPSHOT for releases) and configure the GitHub Packages Gradle repository for resolution.
+3. THE Platform_Service and Transaction_Service SHALL configure the `tasks.test` block to run both JUnit 5 and jqwik property-based tests using `useJUnitPlatform()`.
+4. THE Platform_Service and Transaction_Service SHALL apply the `org.springframework.boot` plugin for building executable JARs.
+5. THE Common_Library, Platform_Service, and Transaction_Service SHALL all use the same Java 21 source and target compatibility settings via `java.toolchain.languageVersion`.
 
 ### Requirement 24: Kubernetes Manifest Organization
 
@@ -406,9 +406,9 @@ This document scopes requirements specifically to service scaffolding concerns â
 
 #### Acceptance Criteria
 
-1. THE Platform_Service repository SHALL include a `README.md` at the root with: project overview, prerequisites (Java 21, Maven, Docker), local setup instructions (Docker Compose + Spring Boot), how to run tests, project structure explanation (hexagonal architecture packages), and links to the API specification and database schema documentation.
+1. THE Platform_Service repository SHALL include a `README.md` at the root with: project overview, prerequisites (Java 21, Gradle, Docker), local setup instructions (Docker Compose + Spring Boot), how to run tests, project structure explanation (hexagonal architecture packages), and links to the API specification and database schema documentation.
 2. THE Transaction_Service repository SHALL include a `README.md` at the root with: project overview, prerequisites, local setup instructions, how to run tests, project structure explanation, and links to the API specification and database schema documentation.
-3. THE Common_Library repository SHALL include a `README.md` at the root with: library overview, how to build and publish, how to consume as a Maven dependency (including GitHub Packages authentication), and package structure explanation.
+3. THE Common_Library repository SHALL include a `README.md` at the root with: library overview, how to build and publish, how to consume as a Gradle dependency (including GitHub Packages authentication), and package structure explanation.
 4. EACH README SHALL include a "Quick Start" section that gets a developer from zero to running services in under 5 minutes.
 
 ### Requirement 31: springdoc-openapi Configuration

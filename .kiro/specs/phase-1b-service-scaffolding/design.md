@@ -16,7 +16,7 @@ The deliverable is both services running on DigitalOcean Kubernetes (DOKS) — e
 |-----------|------------|
 | Language | Java 21 |
 | Framework | Spring Boot 3.x |
-| Build | Maven |
+| Build | Gradle (Kotlin DSL) |
 | Database | PostgreSQL 15 + PostGIS 3.3 |
 | Messaging | Kafka (Redpanda Serverless) |
 | Cache | Redis 7 |
@@ -36,7 +36,8 @@ The deliverable is both services running on DigitalOcean Kubernetes (DOKS) — e
 
 ```
 court-booking-common/
-├── pom.xml
+├── build.gradle.kts
+├── settings.gradle.kts
 ├── src/main/java/gr/courtbooking/common/
 │   ├── dto/
 │   ├── event/
@@ -46,7 +47,8 @@ court-booking-common/
 └── .github/workflows/ci.yml
 
 court-booking-platform-service/
-├── pom.xml
+├── build.gradle.kts
+├── settings.gradle.kts
 ├── Dockerfile
 ├── src/main/java/gr/courtbooking/platform/
 │   ├── domain/
@@ -65,7 +67,8 @@ court-booking-platform-service/
 └── .github/workflows/
 
 court-booking-transaction-service/
-├── pom.xml
+├── build.gradle.kts
+├── settings.gradle.kts
 ├── Dockerfile
 ├── src/main/java/gr/courtbooking/transaction/
 │   ├── domain/
@@ -117,103 +120,66 @@ gr.courtbooking.{platform|transaction}/
 
 ### 1. Common Library (court-booking-common)
 
-#### 1.1 Maven Configuration (pom.xml)
+#### 1.1 Gradle Configuration (build.gradle.kts)
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
-         http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+```kotlin
+plugins {
+    java
+    `java-library`
+    `maven-publish`
+}
 
-    <groupId>gr.courtbooking</groupId>
-    <artifactId>court-booking-common</artifactId>
-    <version>1.0.0</version>
-    <packaging>jar</packaging>
+group = "gr.courtbooking"
+version = "1.0.0"
 
-    <name>Court Booking Common Library</name>
-    <description>Shared DTOs, Kafka events, exceptions, and utilities</description>
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
+}
 
-    <properties>
-        <java.version>21</java.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring-boot.version>3.3.0</spring-boot.version>
-        <jackson.version>2.17.0</jackson.version>
-    </properties>
+repositories {
+    mavenCentral()
+}
 
-    <dependencies>
-        <!-- Spring Boot starters as provided scope -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-json</artifactId>
-            <version>${spring-boot.version}</version>
-            <scope>provided</scope>
-        </dependency>
-        
-        <!-- Jackson annotations for JSON serialization -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-annotations</artifactId>
-            <version>${jackson.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jsr310</artifactId>
-            <version>${jackson.version}</version>
-            <scope>provided</scope>
-        </dependency>
+val springBootVersion = "3.3.0"
+val jacksonVersion = "2.17.0"
 
-        <!-- Test dependencies -->
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>5.10.2</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <version>3.25.3</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>net.jqwik</groupId>
-            <artifactId>jqwik</artifactId>
-            <version>1.8.4</version>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+dependencies {
+    // Spring Boot starters as compileOnly scope
+    compileOnly("org.springframework.boot:spring-boot-starter-json:$springBootVersion")
+    
+    // Jackson annotations for JSON serialization
+    api("com.fasterxml.jackson.core:jackson-annotations:$jacksonVersion")
+    compileOnly("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jacksonVersion")
 
-    <distributionManagement>
-        <repository>
-            <id>github</id>
-            <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/OWNER/court-booking-common</url>
-        </repository>
-    </distributionManagement>
+    // Test dependencies
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation("org.assertj:assertj-core:3.25.3")
+    testImplementation("net.jqwik:jqwik:1.8.4")
+}
 
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.12.1</version>
-                <configuration>
-                    <source>21</source>
-                    <target>21</target>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.2.5</version>
-            </plugin>
-        </plugins>
-    </build>
-</project>
+tasks.test {
+    useJUnitPlatform()
+}
+
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/OWNER/court-booking-common")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR")
+                password = System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
+    publications {
+        create<MavenPublication>("gpr") {
+            from(components["java"])
+        }
+    }
+}
 ```
 
 
@@ -791,165 +757,79 @@ public record ErrorResponse(
 
 ### 2. Platform Service (court-booking-platform-service)
 
-#### 2.1 Maven Configuration (pom.xml)
+#### 2.1 Gradle Configuration (build.gradle.kts)
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
-         http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+```kotlin
+plugins {
+    java
+    id("org.springframework.boot") version "3.3.0"
+    id("io.spring.dependency-management") version "1.1.5"
+}
 
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.0</version>
-        <relativePath/>
-    </parent>
+group = "gr.courtbooking"
+version = "1.0.0-SNAPSHOT"
 
-    <groupId>gr.courtbooking</groupId>
-    <artifactId>court-booking-platform-service</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-    <packaging>jar</packaging>
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
+}
 
-    <name>Court Booking Platform Service</name>
-    <description>Platform Service - Auth, Users, Courts, Availability, Analytics</description>
+repositories {
+    mavenCentral()
+    maven {
+        name = "GitHubPackages"
+        url = uri("https://maven.pkg.github.com/OWNER/court-booking-common")
+        credentials {
+            username = System.getenv("GITHUB_ACTOR") ?: project.findProperty("gpr.user") as String?
+            password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.key") as String?
+        }
+    }
+}
 
-    <properties>
-        <java.version>21</java.version>
-        <court-booking-common.version>1.0.0</court-booking-common.version>
-        <springdoc.version>2.5.0</springdoc.version>
-        <jqwik.version>1.8.4</jqwik.version>
-        <hibernate-spatial.version>6.4.4.Final</hibernate-spatial.version>
-        <logstash-logback.version>7.4</logstash-logback.version>
-    </properties>
+val courtBookingCommonVersion = "1.0.0"
+val springdocVersion = "2.5.0"
+val jqwikVersion = "1.8.4"
+val hibernateSpatialVersion = "6.4.4.Final"
+val logstashLogbackVersion = "7.4"
 
-    <dependencies>
-        <!-- Spring Boot Starters -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-devtools</artifactId>
-            <scope>runtime</scope>
-            <optional>true</optional>
-        </dependency>
+dependencies {
+    // Spring Boot Starters
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
+    implementation("org.springframework.kafka:spring-kafka")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+    developmentOnly("org.springframework.boot:spring-boot-devtools")
 
-        <!-- Database -->
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-database-postgresql</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.hibernate.orm</groupId>
-            <artifactId>hibernate-spatial</artifactId>
-            <version>${hibernate-spatial.version}</version>
-        </dependency>
+    // Database
+    runtimeOnly("org.postgresql:postgresql")
+    implementation("org.flywaydb:flyway-core")
+    implementation("org.flywaydb:flyway-database-postgresql")
+    implementation("org.hibernate.orm:hibernate-spatial:$hibernateSpatialVersion")
 
-        <!-- Common Library -->
-        <dependency>
-            <groupId>gr.courtbooking</groupId>
-            <artifactId>court-booking-common</artifactId>
-            <version>${court-booking-common.version}</version>
-        </dependency>
+    // Common Library
+    implementation("gr.courtbooking:court-booking-common:$courtBookingCommonVersion")
 
-        <!-- API Documentation -->
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>${springdoc.version}</version>
-        </dependency>
+    // API Documentation
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion")
 
-        <!-- Logging -->
-        <dependency>
-            <groupId>net.logstash.logback</groupId>
-            <artifactId>logstash-logback-encoder</artifactId>
-            <version>${logstash-logback.version}</version>
-        </dependency>
+    // Logging
+    implementation("net.logstash.logback:logstash-logback-encoder:$logstashLogbackVersion")
 
-        <!-- Test Dependencies -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>net.jqwik</groupId>
-            <artifactId>jqwik</artifactId>
-            <version>${jqwik.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+    // Test Dependencies
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("net.jqwik:jqwik:$jqwikVersion")
+    testImplementation("org.testcontainers:postgresql")
+    testImplementation("org.testcontainers:junit-jupiter")
+}
 
-    <repositories>
-        <repository>
-            <id>github</id>
-            <url>https://maven.pkg.github.com/OWNER/court-booking-common</url>
-        </repository>
-    </repositories>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <includes>
-                        <include>**/*Test.java</include>
-                        <include>**/*Tests.java</include>
-                        <include>**/*Properties.java</include>
-                    </includes>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-</project>
+tasks.test {
+    useJUnitPlatform {
+        includeEngines("junit-jupiter", "jqwik")
+    }
+}
 ```
 
 
@@ -1275,20 +1155,16 @@ public class RequestIdFilter implements Filter {
 
 ### 3. Transaction Service (court-booking-transaction-service)
 
-#### 3.1 Maven Configuration (pom.xml)
+#### 3.1 Gradle Configuration (build.gradle.kts)
 
-The Transaction Service pom.xml follows the same structure as Platform Service with these additional dependencies:
+The Transaction Service build.gradle.kts follows the same structure as Platform Service with these additional dependencies:
 
-```xml
-<!-- Additional dependencies for Transaction Service -->
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-websocket</artifactId>
-</dependency>
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-quartz</artifactId>
-</dependency>
+```kotlin
+// Additional dependencies for Transaction Service
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter-websocket")
+    implementation("org.springframework.boot:spring-boot-starter-quartz")
+}
 ```
 
 Note: Transaction Service does NOT include hibernate-spatial since it doesn't manage PostGIS geometry columns directly.
@@ -2375,16 +2251,17 @@ CREATE INDEX idx_qrtz_ft_tg ON transaction.QRTZ_FIRED_TRIGGERS(SCHED_NAME, TRIGG
 
 ```dockerfile
 # Build stage
-FROM maven:3.9-eclipse-temurin-21 AS builder
+FROM gradle:8.5-jdk21 AS builder
 WORKDIR /app
 
-# Copy pom.xml first for dependency caching
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
+# Copy Gradle files first for dependency caching
+COPY build.gradle.kts settings.gradle.kts ./
+COPY gradle ./gradle
+RUN gradle dependencies --no-daemon || true
 
 # Copy source and build
 COPY src ./src
-RUN mvn clean package -DskipTests -B
+RUN gradle clean build -x test --no-daemon
 
 # Runtime stage
 FROM eclipse-temurin:21-jre-alpine
@@ -2395,7 +2272,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /app
 
 # Copy JAR from builder
-COPY --from=builder /app/target/*.jar app.jar
+COPY --from=builder /app/build/libs/*.jar app.jar
 
 # Set ownership
 RUN chown -R appuser:appgroup /app
@@ -2421,16 +2298,17 @@ ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
 
 ```dockerfile
 # Build stage
-FROM maven:3.9-eclipse-temurin-21 AS builder
+FROM gradle:8.5-jdk21 AS builder
 WORKDIR /app
 
-# Copy pom.xml first for dependency caching
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
+# Copy Gradle files first for dependency caching
+COPY build.gradle.kts settings.gradle.kts ./
+COPY gradle ./gradle
+RUN gradle dependencies --no-daemon || true
 
 # Copy source and build
 COPY src ./src
-RUN mvn clean package -DskipTests -B
+RUN gradle clean build -x test --no-daemon
 
 # Runtime stage
 FROM eclipse-temurin:21-jre-alpine
@@ -2441,7 +2319,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /app
 
 # Copy JAR from builder
-COPY --from=builder /app/target/*.jar app.jar
+COPY --from=builder /app/build/libs/*.jar app.jar
 
 # Set ownership
 RUN chown -R appuser:appgroup /app
@@ -2831,14 +2709,14 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: maven
+          cache: gradle
 
       - name: Build and Test
-        run: mvn clean verify -B
+        run: ./gradlew clean build
 
       - name: Publish to GitHub Packages
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: mvn deploy -B -DskipTests
+        run: ./gradlew publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -2878,10 +2756,7 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: maven
-          server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
+          cache: gradle
 
       - name: Create test schemas
         run: |
@@ -2889,7 +2764,7 @@ jobs:
           PGPASSWORD=test psql -h localhost -U test -d courtbooking_test -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 
       - name: Build and Test
-        run: mvn clean verify -B
+        run: ./gradlew clean build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/courtbooking_test
@@ -2898,7 +2773,7 @@ jobs:
 
       - name: Flyway Validate
         run: |
-          mvn flyway:validate -Dflyway.url=jdbc:postgresql://localhost:5432/courtbooking_test \
+          ./gradlew flywayValidate -Dflyway.url=jdbc:postgresql://localhost:5432/courtbooking_test \
             -Dflyway.user=test -Dflyway.password=test -Dflyway.schemas=platform
 
       - name: Build Docker Image
@@ -2948,13 +2823,10 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: maven
-          server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
+          cache: gradle
 
       - name: Build JAR
-        run: mvn clean package -DskipTests -B
+        run: ./gradlew clean build -x test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
