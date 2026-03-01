@@ -8,8 +8,8 @@ The implementation follows a logical progression: common library first (as a dep
 
 ## Tasks
 
-- [ ] 1. Set up Common Library (court-booking-common)
-  - [ ] 1.1 Create Gradle project structure with build.gradle.kts
+- [x] 1. Set up Common Library (court-booking-common)
+  - [x] 1.1 Create Gradle project structure with build.gradle.kts
     - Create `court-booking-common/build.gradle.kts` with group `gr.courtbooking`, name `court-booking-common`, Java 25
     - Configure Spring Boot starter dependencies as `compileOnly` scope
     - Add Jackson, JUnit 5, AssertJ, and jqwik dependencies
@@ -579,483 +579,483 @@ The implementation follows a logical progression: common library first (as a dep
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 9. Create Dockerfiles
-  - [ ] 9.1 Create Platform Service Dockerfile
-    - [ ] 9.1.1 Create build stage with Gradle 9.3 and Eclipse Temurin 23
+  - [x] 9.1 Create Platform Service Dockerfile
+    - [x] 9.1.1 Create build stage with Gradle 9.3 and Eclipse Temurin 23
       - _Requirements: 12.1, 12.3_
-    - [ ] 9.1.2 Copy build.gradle.kts and settings.gradle.kts first for dependency caching
+    - [x] 9.1.2 Copy build.gradle.kts and settings.gradle.kts first for dependency caching
       - _Requirements: 12.4_
-    - [ ] 9.1.3 Create runtime stage with Eclipse Temurin 21 JRE Alpine
+    - [x] 9.1.3 Create runtime stage with Eclipse Temurin 21 JRE Alpine
       - _Requirements: 12.3_
-    - [ ] 9.1.4 Configure non-root user (appuser:appgroup) for security
+    - [x] 9.1.4 Configure non-root user (appuser:appgroup) for security
       - _Requirements: 12.5_
-    - [ ] 9.1.5 Configure JAVA_OPTS environment variable with G1GC settings
+    - [x] 9.1.5 Configure JAVA_OPTS environment variable with G1GC settings
       - _Requirements: 12.6_
-    - [ ] 9.1.6 Add HEALTHCHECK instruction
+    - [x] 9.1.6 Add HEALTHCHECK instruction
       - _Requirements: 12.7_
 
   - [ ] 9.2 Create Transaction Service Dockerfile
-    - [ ] 9.2.1 Create build stage with Gradle 9.3 and Eclipse Temurin 23
+    - [x] 9.2.1 Create build stage with Gradle 9.3 and Eclipse Temurin 23
       - _Requirements: 12.2, 12.3_
-    - [ ] 9.2.2 Copy build.gradle.kts and settings.gradle.kts first for dependency caching
+    - [x] 9.2.2 Copy build.gradle.kts and settings.gradle.kts first for dependency caching
       - _Requirements: 12.4_
-    - [ ] 9.2.3 Create runtime stage with Eclipse Temurin 21 JRE Alpine
+    - [x] 9.2.3 Create runtime stage with Eclipse Temurin 21 JRE Alpine
       - _Requirements: 12.3_
-    - [ ] 9.2.4 Configure non-root user for security
+    - [x] 9.2.4 Configure non-root user for security
       - _Requirements: 12.5_
-    - [ ] 9.2.5 Configure JAVA_OPTS environment variable
+    - [x] 9.2.5 Configure JAVA_OPTS environment variable
       - _Requirements: 12.6_
-    - [ ] 9.2.6 Add HEALTHCHECK instruction
+    - [x] 9.2.6 Add HEALTHCHECK instruction
       - _Requirements: 12.7_
 
-- [ ] 10. Create Kubernetes Manifests - Platform Service Base
-  - [ ] 10.1 Create Platform Service base kustomization.yaml
+- [x] 10. Create Kubernetes Manifests - Platform Service Base
+  - [x] 10.1 Create Platform Service base kustomization.yaml
     - Create `k8s/base/kustomization.yaml` referencing deployment, service, configmap
     - _Requirements: 15.1_
 
-  - [ ] 10.2 Create Platform Service base deployment.yaml
-    - [ ] 10.2.1 Configure Deployment metadata and selector
+  - [x] 10.2 Create Platform Service base deployment.yaml
+    - [x] 10.2.1 Configure Deployment metadata and selector
       - _Requirements: 15.2_
-    - [ ] 10.2.2 Configure container with image and ports
+    - [x] 10.2.2 Configure container with image and ports
       - _Requirements: 15.2_
-    - [ ] 10.2.3 Configure envFrom for ConfigMap reference
+    - [x] 10.2.3 Configure envFrom for ConfigMap reference
       - _Requirements: 15.2_
-    - [ ] 10.2.4 Configure env for secrets (db-password, redis-password, kafka-sasl-config)
+    - [x] 10.2.4 Configure env for secrets (db-password, redis-password, kafka-sasl-config)
       - _Requirements: 15.2_
-    - [ ] 10.2.5 Configure resource requests (cpu: 250m, memory: 512Mi)
+    - [x] 10.2.5 Configure resource requests (cpu: 250m, memory: 512Mi)
       - _Requirements: 15.3_
-    - [ ] 10.2.6 Configure resource limits (cpu: 500m, memory: 1Gi)
+    - [x] 10.2.6 Configure resource limits (cpu: 500m, memory: 1Gi)
       - _Requirements: 15.3_
-    - [ ] 10.2.7 Configure liveness probe (initialDelaySeconds: 30, periodSeconds: 10, failureThreshold: 3)
+    - [x] 10.2.7 Configure liveness probe (initialDelaySeconds: 30, periodSeconds: 10, failureThreshold: 3)
       - _Requirements: 15.4_
-    - [ ] 10.2.8 Configure readiness probe (initialDelaySeconds: 15, periodSeconds: 5, failureThreshold: 3)
+    - [x] 10.2.8 Configure readiness probe (initialDelaySeconds: 15, periodSeconds: 5, failureThreshold: 3)
       - _Requirements: 15.5_
-    - [ ] 10.2.9 Configure startup probe (initialDelaySeconds: 60, periodSeconds: 10, failureThreshold: 12)
+    - [x] 10.2.9 Configure startup probe (initialDelaySeconds: 60, periodSeconds: 10, failureThreshold: 12)
       - _Requirements: 15.6_
-    - [ ] 10.2.10 Set terminationGracePeriodSeconds: 45
+    - [x] 10.2.10 Set terminationGracePeriodSeconds: 45
       - _Requirements: 15.7, 26.5_
 
-  - [ ] 10.3 Create Platform Service base service.yaml
+  - [x] 10.3 Create Platform Service base service.yaml
     - Configure ClusterIP service on port 8080
     - _Requirements: 15.2_
 
-  - [ ] 10.4 Create Platform Service base configmap.yaml
+  - [x] 10.4 Create Platform Service base configmap.yaml
     - Configure SPRING_PROFILES_ACTIVE, SERVER_PORT, JAVA_OPTS
     - _Requirements: 15.2_
 
-- [ ] 11. Create Kubernetes Manifests - Platform Service Overlays
-  - [ ] 11.1 Create Platform Service dev overlay
-    - [ ] 11.1.1 Create k8s/overlays/dev/kustomization.yaml
+- [x] 11. Create Kubernetes Manifests - Platform Service Overlays
+  - [x] 11.1 Create Platform Service dev overlay
+    - [x] 11.1.1 Create k8s/overlays/dev/kustomization.yaml
       - _Requirements: 18.1, 24.1_
-    - [ ] 11.1.2 Create k8s/overlays/dev/configmap-patch.yaml with dev profile and connection strings
+    - [x] 11.1.2 Create k8s/overlays/dev/configmap-patch.yaml with dev profile and connection strings
       - _Requirements: 18.1, 24.1_
-    - [ ] 11.1.3 Create k8s/overlays/dev/deployment-patch.yaml with replicas: 1
+    - [x] 11.1.3 Create k8s/overlays/dev/deployment-patch.yaml with replicas: 1
       - _Requirements: 18.1, 24.1_
 
-  - [ ] 11.2 Create Platform Service test overlay
-    - [ ] 11.2.1 Create k8s/overlays/test/kustomization.yaml
+  - [x] 11.2 Create Platform Service test overlay
+    - [x] 11.2.1 Create k8s/overlays/test/kustomization.yaml
       - _Requirements: 18.1, 24.2_
-    - [ ] 11.2.2 Create k8s/overlays/test/configmap-patch.yaml with test profile
+    - [x] 11.2.2 Create k8s/overlays/test/configmap-patch.yaml with test profile
       - _Requirements: 18.1, 24.2_
-    - [ ] 11.2.3 Create k8s/overlays/test/deployment-patch.yaml with replicas: 1
+    - [x] 11.2.3 Create k8s/overlays/test/deployment-patch.yaml with replicas: 1
       - _Requirements: 18.1, 24.2_
 
-  - [ ] 11.3 Create Platform Service staging overlay
-    - [ ] 11.3.1 Create k8s/overlays/staging/kustomization.yaml
+  - [x] 11.3 Create Platform Service staging overlay
+    - [x] 11.3.1 Create k8s/overlays/staging/kustomization.yaml
       - _Requirements: 18.1, 24.3_
-    - [ ] 11.3.2 Create k8s/overlays/staging/configmap-patch.yaml with staging profile
+    - [x] 11.3.2 Create k8s/overlays/staging/configmap-patch.yaml with staging profile
       - _Requirements: 18.1, 24.3_
-    - [ ] 11.3.3 Create k8s/overlays/staging/deployment-patch.yaml with replicas: 2
+    - [x] 11.3.3 Create k8s/overlays/staging/deployment-patch.yaml with replicas: 2
       - _Requirements: 18.1, 24.3_
 
-  - [ ] 11.4 Create Platform Service production overlay
-    - [ ] 11.4.1 Create k8s/overlays/production/kustomization.yaml
+  - [x] 11.4 Create Platform Service production overlay
+    - [x] 11.4.1 Create k8s/overlays/production/kustomization.yaml
       - _Requirements: 18.1, 24.4_
-    - [ ] 11.4.2 Create k8s/overlays/production/configmap-patch.yaml with prod profile and production connection strings
+    - [x] 11.4.2 Create k8s/overlays/production/configmap-patch.yaml with prod profile and production connection strings
       - _Requirements: 18.1, 24.4_
-    - [ ] 11.4.3 Create k8s/overlays/production/deployment-patch.yaml with replicas: 2, increased resources
+    - [x] 11.4.3 Create k8s/overlays/production/deployment-patch.yaml with replicas: 2, increased resources
       - _Requirements: 18.1, 24.4_
 
-- [ ] 12. Create Kubernetes Manifests - Transaction Service Base
-  - [ ] 12.1 Create Transaction Service base kustomization.yaml
+- [x] 12. Create Kubernetes Manifests - Transaction Service Base
+  - [x] 12.1 Create Transaction Service base kustomization.yaml
     - Create `k8s/base/kustomization.yaml` referencing deployment, service, configmap
     - _Requirements: 16.1_
 
-  - [ ] 12.2 Create Transaction Service base deployment.yaml
-    - [ ] 12.2.1 Configure Deployment metadata and selector
+  - [x] 12.2 Create Transaction Service base deployment.yaml
+    - [x] 12.2.1 Configure Deployment metadata and selector
       - _Requirements: 16.2_
-    - [ ] 12.2.2 Configure container with image and ports
+    - [x] 12.2.2 Configure container with image and ports
       - _Requirements: 16.2_
-    - [ ] 12.2.3 Configure envFrom for ConfigMap reference
+    - [x] 12.2.3 Configure envFrom for ConfigMap reference
       - _Requirements: 16.2_
-    - [ ] 12.2.4 Configure env for secrets
+    - [x] 12.2.4 Configure env for secrets
       - _Requirements: 16.2_
-    - [ ] 12.2.5 Configure resource requests and limits
+    - [x] 12.2.5 Configure resource requests and limits
       - _Requirements: 16.3_
-    - [ ] 12.2.6 Configure liveness probe
+    - [x] 12.2.6 Configure liveness probe
       - _Requirements: 16.4_
-    - [ ] 12.2.7 Configure readiness probe
+    - [x] 12.2.7 Configure readiness probe
       - _Requirements: 16.5_
-    - [ ] 12.2.8 Configure startup probe
+    - [x] 12.2.8 Configure startup probe
       - _Requirements: 16.6_
-    - [ ] 12.2.9 Set terminationGracePeriodSeconds: 45
+    - [x] 12.2.9 Set terminationGracePeriodSeconds: 45
       - _Requirements: 16.7, 26.5_
 
-  - [ ] 12.3 Create Transaction Service base service.yaml
+  - [x] 12.3 Create Transaction Service base service.yaml
     - Configure ClusterIP service on port 8080
     - _Requirements: 16.2_
 
-  - [ ] 12.4 Create Transaction Service base configmap.yaml
+  - [x] 12.4 Create Transaction Service base configmap.yaml
     - Configure SPRING_PROFILES_ACTIVE, SERVER_PORT, JAVA_OPTS
     - _Requirements: 16.2_
 
-- [ ] 13. Create Kubernetes Manifests - Transaction Service Overlays
-  - [ ] 13.1 Create Transaction Service dev overlay
-    - [ ] 13.1.1 Create k8s/overlays/dev/kustomization.yaml
+- [x] 13. Create Kubernetes Manifests - Transaction Service Overlays
+  - [x] 13.1 Create Transaction Service dev overlay
+    - [x] 13.1.1 Create k8s/overlays/dev/kustomization.yaml
       - _Requirements: 18.2, 24.1_
-    - [ ] 13.1.2 Create k8s/overlays/dev/configmap-patch.yaml
+    - [x] 13.1.2 Create k8s/overlays/dev/configmap-patch.yaml
       - _Requirements: 18.2, 24.1_
-    - [ ] 13.1.3 Create k8s/overlays/dev/deployment-patch.yaml
+    - [x] 13.1.3 Create k8s/overlays/dev/deployment-patch.yaml
       - _Requirements: 18.2, 24.1_
 
-  - [ ] 13.2 Create Transaction Service test overlay
-    - [ ] 13.2.1 Create k8s/overlays/test/kustomization.yaml
+  - [x] 13.2 Create Transaction Service test overlay
+    - [x] 13.2.1 Create k8s/overlays/test/kustomization.yaml
       - _Requirements: 18.2, 24.2_
-    - [ ] 13.2.2 Create k8s/overlays/test/configmap-patch.yaml
+    - [x] 13.2.2 Create k8s/overlays/test/configmap-patch.yaml
       - _Requirements: 18.2, 24.2_
-    - [ ] 13.2.3 Create k8s/overlays/test/deployment-patch.yaml
+    - [x] 13.2.3 Create k8s/overlays/test/deployment-patch.yaml
       - _Requirements: 18.2, 24.2_
 
-  - [ ] 13.3 Create Transaction Service staging overlay
-    - [ ] 13.3.1 Create k8s/overlays/staging/kustomization.yaml
+  - [x] 13.3 Create Transaction Service staging overlay
+    - [x] 13.3.1 Create k8s/overlays/staging/kustomization.yaml
       - _Requirements: 18.2, 24.3_
-    - [ ] 13.3.2 Create k8s/overlays/staging/configmap-patch.yaml
+    - [x] 13.3.2 Create k8s/overlays/staging/configmap-patch.yaml
       - _Requirements: 18.2, 24.3_
-    - [ ] 13.3.3 Create k8s/overlays/staging/deployment-patch.yaml
+    - [x] 13.3.3 Create k8s/overlays/staging/deployment-patch.yaml
       - _Requirements: 18.2, 24.3_
 
-  - [ ] 13.4 Create Transaction Service production overlay
-    - [ ] 13.4.1 Create k8s/overlays/production/kustomization.yaml
+  - [x] 13.4 Create Transaction Service production overlay
+    - [x] 13.4.1 Create k8s/overlays/production/kustomization.yaml
       - _Requirements: 18.2, 24.4_
-    - [ ] 13.4.2 Create k8s/overlays/production/configmap-patch.yaml
+    - [x] 13.4.2 Create k8s/overlays/production/configmap-patch.yaml
       - _Requirements: 18.2, 24.4_
-    - [ ] 13.4.3 Create k8s/overlays/production/deployment-patch.yaml
+    - [x] 13.4.3 Create k8s/overlays/production/deployment-patch.yaml
       - _Requirements: 18.2, 24.4_
 
-- [ ] 14. Create shared Ingress resource
-  - [ ] 14.1 Configure Ingress metadata with annotations
-    - [ ] 14.1.1 Set kubernetes.io/ingress.class: nginx
+- [x] 14. Create shared Ingress resource
+  - [x] 14.1 Configure Ingress metadata with annotations
+    - [x] 14.1.1 Set kubernetes.io/ingress.class: nginx
       - _Requirements: 17.1_
-    - [ ] 14.1.2 Set cert-manager.io/cluster-issuer: letsencrypt-prod
+    - [x] 14.1.2 Set cert-manager.io/cluster-issuer: letsencrypt-prod
       - _Requirements: 17.5_
-    - [ ] 14.1.3 Configure proxy settings (body-size, read-timeout)
+    - [x] 14.1.3 Configure proxy settings (body-size, read-timeout)
       - _Requirements: 17.1_
 
-  - [ ] 14.2 Configure TLS settings
+  - [x] 14.2 Configure TLS settings
     - Configure TLS with host api.courtbooking.gr and secret name
     - _Requirements: 17.5_
 
-  - [ ] 14.3 Configure Platform Service routes
-    - [ ] 14.3.1 Route /api/auth to platform-service
+  - [x] 14.3 Configure Platform Service routes
+    - [x] 14.3.1 Route /api/auth to platform-service
       - _Requirements: 17.2_
-    - [ ] 14.3.2 Route /api/users to platform-service
+    - [x] 14.3.2 Route /api/users to platform-service
       - _Requirements: 17.2_
-    - [ ] 14.3.3 Route /api/courts to platform-service
+    - [x] 14.3.3 Route /api/courts to platform-service
       - _Requirements: 17.2_
-    - [ ] 14.3.4 Route /api/weather to platform-service
+    - [x] 14.3.4 Route /api/weather to platform-service
       - _Requirements: 17.2_
-    - [ ] 14.3.5 Route /api/analytics to platform-service
+    - [x] 14.3.5 Route /api/analytics to platform-service
       - _Requirements: 17.2_
-    - [ ] 14.3.6 Route /api/promo-codes to platform-service
+    - [x] 14.3.6 Route /api/promo-codes to platform-service
       - _Requirements: 17.2_
-    - [ ] 14.3.7 Route /api/feature-flags to platform-service
+    - [x] 14.3.7 Route /api/feature-flags to platform-service
       - _Requirements: 17.2_
-    - [ ] 14.3.8 Route /api/admin to platform-service
+    - [x] 14.3.8 Route /api/admin to platform-service
       - _Requirements: 17.2_
-    - [ ] 14.3.9 Route /api/support to platform-service
+    - [x] 14.3.9 Route /api/support to platform-service
       - _Requirements: 17.2_
 
-  - [ ] 14.4 Configure Transaction Service routes
-    - [ ] 14.4.1 Route /api/bookings to transaction-service
+  - [x] 14.4 Configure Transaction Service routes
+    - [x] 14.4.1 Route /api/bookings to transaction-service
       - _Requirements: 17.3_
-    - [ ] 14.4.2 Route /api/payments to transaction-service
+    - [x] 14.4.2 Route /api/payments to transaction-service
       - _Requirements: 17.3_
-    - [ ] 14.4.3 Route /api/notifications to transaction-service
+    - [x] 14.4.3 Route /api/notifications to transaction-service
       - _Requirements: 17.3_
-    - [ ] 14.4.4 Route /api/waitlist to transaction-service
+    - [x] 14.4.4 Route /api/waitlist to transaction-service
       - _Requirements: 17.3_
-    - [ ] 14.4.5 Route /api/matches to transaction-service
+    - [x] 14.4.5 Route /api/matches to transaction-service
       - _Requirements: 17.3_
-    - [ ] 14.4.6 Route /api/split-payments to transaction-service
+    - [x] 14.4.6 Route /api/split-payments to transaction-service
       - _Requirements: 17.3_
 
-  - [ ] 14.5 Configure WebSocket route
+  - [x] 14.5 Configure WebSocket route
     - Route /ws to transaction-service
     - _Requirements: 17.4, 17.6_
 
-- [ ] 15. Checkpoint - Kubernetes Manifests Complete
+- [x] 15. Checkpoint - Kubernetes Manifests Complete
   - Ensure all tests pass, ask the user if questions arise.
 
 
-- [ ] 16. Create CI/CD Pipelines - Platform Service CI Workflow
-  - [ ] 16.1 Create Platform Service CI workflow file
+- [x] 16. Create CI/CD Pipelines - Platform Service CI Workflow
+  - [x] 16.1 Create Platform Service CI workflow file
     - Create `.github/workflows/ci.yml` triggered on PRs to develop/main
     - _Requirements: 13.1_
 
-  - [ ] 16.2 Configure PostgreSQL service container
-    - [ ] 16.2.1 Configure postgis/postgis:15-3.3 image
+  - [x] 16.2 Configure PostgreSQL service container
+    - [x] 16.2.1 Configure postgis/postgis:15-3.3 image
       - _Requirements: 13.2, 20.1_
-    - [ ] 16.2.2 Configure environment variables (POSTGRES_USER, PASSWORD, DB)
+    - [x] 16.2.2 Configure environment variables (POSTGRES_USER, PASSWORD, DB)
       - _Requirements: 13.2_
-    - [ ] 16.2.3 Configure health check options
-      - _Requirements: 13.2_
-
-  - [ ] 16.3 Configure CI workflow steps
-    - [ ] 16.3.1 Add checkout step
-      - _Requirements: 13.2_
-    - [ ] 16.3.2 Add Java 25 setup step with Gradle cache
-      - _Requirements: 13.2_
-    - [ ] 16.3.3 Add step to create test schemas (platform schema, PostGIS extension)
-      - _Requirements: 13.2_
-    - [ ] 16.3.4 Add build and test step with environment variables
-      - _Requirements: 13.2_
-    - [ ] 16.3.5 Add Flyway validate step
-      - _Requirements: 13.2_
-    - [ ] 16.3.6 Add Docker image build step
+    - [x] 16.2.3 Configure health check options
       - _Requirements: 13.2_
 
-  - [ ] 16.4 Configure Trivy vulnerability scan
-    - [ ] 16.4.1 Add Trivy action with SARIF output format
+  - [x] 16.3 Configure CI workflow steps
+    - [x] 16.3.1 Add checkout step
+      - _Requirements: 13.2_
+    - [x] 16.3.2 Add Java 25 setup step with Gradle cache
+      - _Requirements: 13.2_
+    - [x] 16.3.3 Add step to create test schemas (platform schema, PostGIS extension)
+      - _Requirements: 13.2_
+    - [x] 16.3.4 Add build and test step with environment variables
+      - _Requirements: 13.2_
+    - [x] 16.3.5 Add Flyway validate step
+      - _Requirements: 13.2_
+    - [x] 16.3.6 Add Docker image build step
+      - _Requirements: 13.2_
+
+  - [x] 16.4 Configure Trivy vulnerability scan
+    - [x] 16.4.1 Add Trivy action with SARIF output format
       - _Requirements: 21.1, 21.2_
-    - [ ] 16.4.2 Configure severity filter (CRITICAL, HIGH)
+    - [x] 16.4.2 Configure severity filter (CRITICAL, HIGH)
       - _Requirements: 21.3_
-    - [ ] 16.4.3 Configure exit-code: 1 to fail on vulnerabilities
+    - [x] 16.4.3 Configure exit-code: 1 to fail on vulnerabilities
       - _Requirements: 21.4_
-    - [ ] 16.4.4 Add step to upload Trivy results as artifact
+    - [x] 16.4.4 Add step to upload Trivy results as artifact
       - _Requirements: 21.2_
 
-- [ ] 17. Create CI/CD Pipelines - Platform Service Deploy Workflow
-  - [ ] 17.1 Create Platform Service deploy workflow file
+- [x] 17. Create CI/CD Pipelines - Platform Service Deploy Workflow
+  - [x] 17.1 Create Platform Service deploy workflow file
     - Create `.github/workflows/deploy.yml` triggered on push to develop
     - _Requirements: 13.3_
 
-  - [ ] 17.2 Create build-and-push job
-    - [ ] 17.2.1 Configure checkout and Java 25 setup steps
+  - [x] 17.2 Create build-and-push job
+    - [x] 17.2.1 Configure checkout and Java 25 setup steps
       - _Requirements: 13.3_
-    - [ ] 17.2.2 Add Gradle build step (./gradlew clean build -x test)
+    - [x] 17.2.2 Add Gradle build step (./gradlew clean build -x test)
       - _Requirements: 13.3_
-    - [ ] 17.2.3 Add doctl installation step
+    - [x] 17.2.3 Add doctl installation step
       - _Requirements: 13.3_
-    - [ ] 17.2.4 Add DOCR login step
+    - [x] 17.2.4 Add DOCR login step
       - _Requirements: 13.3_
-    - [ ] 17.2.5 Add Docker build and push step with SHA tag
+    - [x] 17.2.5 Add Docker build and push step with SHA tag
       - _Requirements: 13.3_
-    - [ ] 17.2.6 Configure output for image_tag
+    - [x] 17.2.6 Configure output for image_tag
       - _Requirements: 13.3_
 
-  - [ ] 17.3 Create deploy-dev job
-    - [ ] 17.3.1 Configure job dependency on build-and-push
+  - [x] 17.3 Create deploy-dev job
+    - [x] 17.3.1 Configure job dependency on build-and-push
       - _Requirements: 13.4_
-    - [ ] 17.3.2 Configure environment: dev
+    - [x] 17.3.2 Configure environment: dev
       - _Requirements: 13.4, 22.1_
-    - [ ] 17.3.3 Add checkout step
+    - [x] 17.3.3 Add checkout step
       - _Requirements: 13.4_
-    - [ ] 17.3.4 Add doctl installation and kubectl configuration steps
+    - [x] 17.3.4 Add doctl installation and kubectl configuration steps
       - _Requirements: 13.4_
-    - [ ] 17.3.5 Add kustomize edit set image step
+    - [x] 17.3.5 Add kustomize edit set image step
       - _Requirements: 13.4_
-    - [ ] 17.3.6 Add kubectl apply step
+    - [x] 17.3.6 Add kubectl apply step
       - _Requirements: 13.4_
-    - [ ] 17.3.7 Add kubectl rollout status step with timeout
+    - [x] 17.3.7 Add kubectl rollout status step with timeout
       - _Requirements: 13.4_
 
-  - [ ] 17.4 Create deploy-test job
-    - [ ] 17.4.1 Configure job dependency on deploy-dev
+  - [x] 17.4 Create deploy-test job
+    - [x] 17.4.1 Configure job dependency on deploy-dev
       - _Requirements: 13.5_
-    - [ ] 17.4.2 Configure environment: test
+    - [x] 17.4.2 Configure environment: test
       - _Requirements: 13.5, 22.1_
-    - [ ] 17.4.3 Add deployment steps (checkout, doctl, kubectl, kustomize, apply, rollout)
+    - [x] 17.4.3 Add deployment steps (checkout, doctl, kubectl, kustomize, apply, rollout)
       - _Requirements: 13.5_
 
-  - [ ] 17.5 Create trigger-qa job
-    - [ ] 17.5.1 Configure job dependency on deploy-test
+  - [x] 17.5 Create trigger-qa job
+    - [x] 17.5.1 Configure job dependency on deploy-test
       - _Requirements: 13.6_
-    - [ ] 17.5.2 Add repository_dispatch action to trigger QA functional regression
+    - [x] 17.5.2 Add repository_dispatch action to trigger QA functional regression
       - _Requirements: 13.6, 22.3_
-    - [ ] 17.5.3 Configure client-payload with service, version, environment, triggered_by, run_url
+    - [x] 17.5.3 Configure client-payload with service, version, environment, triggered_by, run_url
       - _Requirements: 13.6_
 
-  - [ ] 17.6 Create deploy-staging job
-    - [ ] 17.6.1 Configure job dependency on trigger-qa
+  - [x] 17.6 Create deploy-staging job
+    - [x] 17.6.1 Configure job dependency on trigger-qa
       - _Requirements: 13.7_
-    - [ ] 17.6.2 Configure environment: staging with URL
+    - [x] 17.6.2 Configure environment: staging with URL
       - _Requirements: 13.7, 22.1_
-    - [ ] 17.6.3 Add deployment steps
+    - [x] 17.6.3 Add deployment steps
       - _Requirements: 13.7_
-    - [ ] 17.6.4 Add repository_dispatch to trigger QA staging validation
+    - [x] 17.6.4 Add repository_dispatch to trigger QA staging validation
       - _Requirements: 13.7, 22.3_
 
-  - [ ] 17.7 Create deploy-production job
-    - [ ] 17.7.1 Configure job dependency on deploy-staging
+  - [x] 17.7 Create deploy-production job
+    - [x] 17.7.1 Configure job dependency on deploy-staging
       - _Requirements: 13.8_
-    - [ ] 17.7.2 Configure environment: production with URL and manual approval
+    - [x] 17.7.2 Configure environment: production with URL and manual approval
       - _Requirements: 13.8, 22.1, 22.4_
-    - [ ] 17.7.3 Add step to tag release candidate (docker tag with version)
+    - [x] 17.7.3 Add step to tag release candidate (docker tag with version)
       - _Requirements: 13.9_
-    - [ ] 17.7.4 Add deployment steps with production overlay
+    - [x] 17.7.4 Add deployment steps with production overlay
       - _Requirements: 13.10_
-    - [ ] 17.7.5 Add kubectl rollout status step
+    - [x] 17.7.5 Add kubectl rollout status step
       - _Requirements: 13.10_
 
-- [ ] 18. Create CI/CD Pipelines - Transaction Service CI Workflow
-  - [ ] 18.1 Create Transaction Service CI workflow file
+- [x] 18. Create CI/CD Pipelines - Transaction Service CI Workflow
+  - [x] 18.1 Create Transaction Service CI workflow file
     - Create `.github/workflows/ci.yml` triggered on PRs to develop/main
     - _Requirements: 14.1_
 
-  - [ ] 18.2 Configure PostgreSQL service container
-    - [ ] 18.2.1 Configure postgis/postgis:15-3.3 image
+  - [x] 18.2 Configure PostgreSQL service container
+    - [x] 18.2.1 Configure postgis/postgis:15-3.3 image
       - _Requirements: 14.2, 20.2_
-    - [ ] 18.2.2 Configure environment variables
+    - [x] 18.2.2 Configure environment variables
       - _Requirements: 14.2_
-    - [ ] 18.2.3 Configure health check options
+    - [x] 18.2.3 Configure health check options
       - _Requirements: 14.2_
 
-  - [ ] 18.3 Configure CI workflow steps
-    - [ ] 18.3.1 Add checkout step
+  - [x] 18.3 Configure CI workflow steps
+    - [x] 18.3.1 Add checkout step
       - _Requirements: 14.2_
-    - [ ] 18.3.2 Add Java 25 setup step with Gradle cache
+    - [x] 18.3.2 Add Java 25 setup step with Gradle cache
       - _Requirements: 14.2_
-    - [ ] 18.3.3 Add step to create platform schema first (for cross-schema view references)
+    - [x] 18.3.3 Add step to create platform schema first (for cross-schema view references)
       - _Requirements: 14.2, 20.3_
-    - [ ] 18.3.4 Add step to create transaction schema
+    - [x] 18.3.4 Add step to create transaction schema
       - _Requirements: 14.2_
-    - [ ] 18.3.5 Add build and test step
+    - [x] 18.3.5 Add build and test step
       - _Requirements: 14.2_
-    - [ ] 18.3.6 Add Flyway validate step
+    - [x] 18.3.6 Add Flyway validate step
       - _Requirements: 14.2_
-    - [ ] 18.3.7 Add Docker image build step
+    - [x] 18.3.7 Add Docker image build step
       - _Requirements: 14.2_
 
-  - [ ] 18.4 Configure Trivy vulnerability scan
-    - [ ] 18.4.1 Add Trivy action with SARIF output format
+  - [x] 18.4 Configure Trivy vulnerability scan
+    - [x] 18.4.1 Add Trivy action with SARIF output format
       - _Requirements: 21.1, 21.2_
-    - [ ] 18.4.2 Configure severity filter and exit-code
+    - [x] 18.4.2 Configure severity filter and exit-code
       - _Requirements: 21.3, 21.4_
-    - [ ] 18.4.3 Add step to upload Trivy results
+    - [x] 18.4.3 Add step to upload Trivy results
       - _Requirements: 21.2_
 
-- [ ] 19. Create CI/CD Pipelines - Transaction Service Deploy Workflow
-  - [ ] 19.1 Create Transaction Service deploy workflow file
+- [x] 19. Create CI/CD Pipelines - Transaction Service Deploy Workflow
+  - [x] 19.1 Create Transaction Service deploy workflow file
     - Create `.github/workflows/deploy.yml` triggered on push to develop
     - _Requirements: 14.3_
 
-  - [ ] 19.2 Create build-and-push job
-    - [ ] 19.2.1 Configure checkout and Java 25 setup steps
+  - [x] 19.2 Create build-and-push job
+    - [x] 19.2.1 Configure checkout and Java 25 setup steps
       - _Requirements: 14.3_
-    - [ ] 19.2.2 Add Gradle build step
+    - [x] 19.2.2 Add Gradle build step
       - _Requirements: 14.3_
-    - [ ] 19.2.3 Add doctl installation and DOCR login steps
+    - [x] 19.2.3 Add doctl installation and DOCR login steps
       - _Requirements: 14.3_
-    - [ ] 19.2.4 Add Docker build and push step
+    - [x] 19.2.4 Add Docker build and push step
       - _Requirements: 14.3_
 
-  - [ ] 19.3 Create deploy-dev job
-    - [ ] 19.3.1 Configure job dependency and environment
+  - [x] 19.3 Create deploy-dev job
+    - [x] 19.3.1 Configure job dependency and environment
       - _Requirements: 14.4, 22.2_
-    - [ ] 19.3.2 Add deployment steps
+    - [x] 19.3.2 Add deployment steps
       - _Requirements: 14.4_
 
-  - [ ] 19.4 Create deploy-test job
-    - [ ] 19.4.1 Configure job dependency and environment
+  - [x] 19.4 Create deploy-test job
+    - [x] 19.4.1 Configure job dependency and environment
       - _Requirements: 14.5, 22.2_
-    - [ ] 19.4.2 Add deployment steps
+    - [x] 19.4.2 Add deployment steps
       - _Requirements: 14.5_
 
-  - [ ] 19.5 Create trigger-qa job
-    - [ ] 19.5.1 Configure repository_dispatch for QA functional regression
+  - [x] 19.5 Create trigger-qa job
+    - [x] 19.5.1 Configure repository_dispatch for QA functional regression
       - _Requirements: 14.6, 22.3_
 
-  - [ ] 19.6 Create deploy-staging job
-    - [ ] 19.6.1 Configure job dependency and environment with manual approval
+  - [x] 19.6 Create deploy-staging job
+    - [x] 19.6.1 Configure job dependency and environment with manual approval
       - _Requirements: 14.7, 22.2_
-    - [ ] 19.6.2 Add deployment steps
+    - [x] 19.6.2 Add deployment steps
       - _Requirements: 14.7_
-    - [ ] 19.6.3 Add repository_dispatch for QA staging validation
+    - [x] 19.6.3 Add repository_dispatch for QA staging validation
       - _Requirements: 14.7, 22.3_
 
-  - [ ] 19.7 Create deploy-production job
-    - [ ] 19.7.1 Configure job dependency and environment with manual approval
+  - [x] 19.7 Create deploy-production job
+    - [x] 19.7.1 Configure job dependency and environment with manual approval
       - _Requirements: 14.8, 22.2, 22.4_
-    - [ ] 19.7.2 Add release candidate tagging step
+    - [x] 19.7.2 Add release candidate tagging step
       - _Requirements: 14.9_
-    - [ ] 19.7.3 Add deployment steps
+    - [x] 19.7.3 Add deployment steps
       - _Requirements: 14.10_
 
-- [ ] 20. Checkpoint - CI/CD Pipelines Complete
+- [x] 20. Checkpoint - CI/CD Pipelines Complete
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 21. Set up Local Development Environment
   - [ ] 21.1 Create Docker Compose configuration
-    - [ ] 21.1.1 Create infrastructure/docker-compose.yml file
+    - [x] 21.1.1 Create infrastructure/docker-compose.yml file
       - _Requirements: 19.1_
-    - [ ] 21.1.2 Configure PostgreSQL 15 + PostGIS 3.3 service
+    - [x] 21.1.2 Configure PostgreSQL 15 + PostGIS 3.3 service
       - _Requirements: 19.1_
-    - [ ] 21.1.3 Configure PostgreSQL health check
+    - [x] 21.1.3 Configure PostgreSQL health check
       - _Requirements: 19.1_
-    - [ ] 21.1.4 Configure PostgreSQL volume mount for init script
+    - [x] 21.1.4 Configure PostgreSQL volume mount for init script
       - _Requirements: 19.1_
-    - [ ] 21.1.5 Configure Redis 7 Alpine service
+    - [x] 21.1.5 Configure Redis 7 Alpine service
       - _Requirements: 19.1_
-    - [ ] 21.1.6 Configure Redis health check
+    - [x] 21.1.6 Configure Redis health check
       - _Requirements: 19.1_
-    - [ ] 21.1.7 Configure Zookeeper service
+    - [x] 21.1.7 Configure Zookeeper service
       - _Requirements: 19.1_
-    - [ ] 21.1.8 Configure Kafka (Confluent) service with dependency on Zookeeper
+    - [x] 21.1.8 Configure Kafka (Confluent) service with dependency on Zookeeper
       - _Requirements: 19.1_
-    - [ ] 21.1.9 Configure Kafka health check
+    - [x] 21.1.9 Configure Kafka health check
       - _Requirements: 19.1_
-    - [ ] 21.1.10 Configure named volumes for data persistence
+    - [x] 21.1.10 Configure named volumes for data persistence
       - _Requirements: 19.1_
 
   - [ ] 21.2 Create database init script
-    - [ ] 21.2.1 Create infrastructure/init-db.sql file
+    - [x] 21.2.1 Create infrastructure/init-db.sql file
       - _Requirements: 19.2_
-    - [ ] 21.2.2 Add CREATE SCHEMA statements for platform and transaction
+    - [x] 21.2.2 Add CREATE SCHEMA statements for platform and transaction
       - _Requirements: 19.2_
-    - [ ] 21.2.3 Add CREATE EXTENSION postgis statement
+    - [x] 21.2.3 Add CREATE EXTENSION postgis statement
       - _Requirements: 19.2_
-    - [ ] 21.2.4 Add GRANT statements for dev user
+    - [x] 21.2.4 Add GRANT statements for dev user
       - _Requirements: 19.2_
     - [ ] 21.2.5 Add ALTER USER to set default search_path
       - _Requirements: 19.2_
 
-  - [ ] 21.3 Create Platform Service sample data seeding migration
-    - [ ] 21.3.1 Create V999__seed_local_data.sql in platform/local directory
+  - [x] 21.3 Create Platform Service sample data seeding migration
+    - [x] 21.3.1 Create V999__seed_local_data.sql in platform/local directory
       - _Requirements: 29.1_
-    - [ ] 21.3.2 Add sample users (customer, court owner)
+    - [x] 21.3.2 Add sample users (customer, court owner)
       - _Requirements: 29.2_
-    - [ ] 21.3.3 Add sample courts with PostGIS geometry
+    - [x] 21.3.3 Add sample courts with PostGIS geometry
       - _Requirements: 29.2_
-    - [ ] 21.3.4 Add sample availability windows
+    - [x] 21.3.4 Add sample availability windows
       - _Requirements: 29.2_
-    - [ ] 21.3.5 Add sample pricing rules
+    - [x] 21.3.5 Add sample pricing rules
       - _Requirements: 29.2_
-    - [ ] 21.3.6 Add sample cancellation tiers
+    - [x] 21.3.6 Add sample cancellation tiers
       - _Requirements: 29.2_
-    - [ ] 21.3.7 Ensure idempotent seeding with ON CONFLICT clauses
+    - [x] 21.3.7 Ensure idempotent seeding with ON CONFLICT clauses
       - _Requirements: 29.4_
 
-  - [ ] 21.4 Create Transaction Service sample data seeding migration
-    - [ ] 21.4.1 Create V999__seed_local_data.sql in transaction/local directory
+  - [x] 21.4 Create Transaction Service sample data seeding migration
+    - [x] 21.4.1 Create V999__seed_local_data.sql in transaction/local directory
       - _Requirements: 29.1_
-    - [ ] 21.4.2 Add sample bookings
+    - [x] 21.4.2 Add sample bookings
       - _Requirements: 29.3_
-    - [ ] 21.4.3 Ensure idempotent seeding with ON CONFLICT clauses
+    - [x] 21.4.3 Ensure idempotent seeding with ON CONFLICT clauses
       - _Requirements: 29.4_
 
-  - [ ] 21.5 Configure Flyway locations for local seed data
-    - [ ] 21.5.1 Update Platform Service application-local.yml to include local seed directory
+  - [x] 21.5 Configure Flyway locations for local seed data
+    - [x] 21.5.1 Update Platform Service application-local.yml to include local seed directory
       - _Requirements: 29.5_
-    - [ ] 21.5.2 Update Transaction Service application-local.yml to include local seed directory
+    - [x] 21.5.2 Update Transaction Service application-local.yml to include local seed directory
       - _Requirements: 29.5_
 
   - [ ] 21.6 Verify local development workflow
@@ -1080,156 +1080,156 @@ The implementation follows a logical progression: common library first (as a dep
     - [ ] 21.6.10 Verify Transaction Service actuator health endpoint returns HTTP 200
       - _Requirements: 19.6_
 
-- [ ] 22. Create Repository Documentation
-  - [ ] 22.1 Create Platform Service README.md
-    - [ ] 22.1.1 Add project overview section
+- [x] 22. Create Repository Documentation
+  - [x] 22.1 Create Platform Service README.md
+    - [x] 22.1.1 Add project overview section
       - _Requirements: 30.1_
-    - [ ] 22.1.2 Add prerequisites section (Java 25, Gradle 9.3.1, Docker)
+    - [x] 22.1.2 Add prerequisites section (Java 25, Gradle 9.3.1, Docker)
       - _Requirements: 30.1_
-    - [ ] 22.1.3 Add Quick Start section for 5-minute setup
+    - [x] 22.1.3 Add Quick Start section for 5-minute setup
       - _Requirements: 30.4_
-    - [ ] 22.1.4 Add local setup instructions
+    - [x] 22.1.4 Add local setup instructions
       - _Requirements: 30.1_
-    - [ ] 22.1.5 Add how to run tests section
+    - [x] 22.1.5 Add how to run tests section
       - _Requirements: 30.1_
-    - [ ] 22.1.6 Add project structure explanation
+    - [x] 22.1.6 Add project structure explanation
       - _Requirements: 30.1_
-    - [ ] 22.1.7 Add links to API spec and database schema
+    - [x] 22.1.7 Add links to API spec and database schema
       - _Requirements: 30.1_
 
-  - [ ] 22.2 Create Transaction Service README.md
-    - [ ] 22.2.1 Add project overview section
+  - [x] 22.2 Create Transaction Service README.md
+    - [x] 22.2.1 Add project overview section
       - _Requirements: 30.2_
-    - [ ] 22.2.2 Add prerequisites section
+    - [x] 22.2.2 Add prerequisites section
       - _Requirements: 30.2_
-    - [ ] 22.2.3 Add Quick Start section
+    - [x] 22.2.3 Add Quick Start section
       - _Requirements: 30.4_
-    - [ ] 22.2.4 Add local setup instructions
+    - [x] 22.2.4 Add local setup instructions
       - _Requirements: 30.2_
-    - [ ] 22.2.5 Add how to run tests section
+    - [x] 22.2.5 Add how to run tests section
       - _Requirements: 30.2_
-    - [ ] 22.2.6 Add project structure explanation
+    - [x] 22.2.6 Add project structure explanation
       - _Requirements: 30.2_
-    - [ ] 22.2.7 Add links to API spec and database schema
+    - [x] 22.2.7 Add links to API spec and database schema
       - _Requirements: 30.2_
 
-  - [ ] 22.3 Create Common Library README.md
-    - [ ] 22.3.1 Add library overview section
+  - [x] 22.3 Create Common Library README.md
+    - [x] 22.3.1 Add library overview section
       - _Requirements: 30.3_
-    - [ ] 22.3.2 Add build and publish instructions
+    - [x] 22.3.2 Add build and publish instructions
       - _Requirements: 30.3_
-    - [ ] 22.3.3 Add Gradle dependency consumption guide with GitHub Packages authentication
+    - [x] 22.3.3 Add Gradle dependency consumption guide with GitHub Packages authentication
       - _Requirements: 30.3_
-    - [ ] 22.3.4 Add package structure explanation
+    - [x] 22.3.4 Add package structure explanation
       - _Requirements: 30.3_
 
-- [ ] 23. Write Unit Tests - Common Library
-  - [ ] 23.1 Write unit tests for DTO enum types
-    - [ ] 23.1.1 Test CourtType enum values
+- [x] 23. Write Unit Tests - Common Library
+  - [x] 23.1 Write unit tests for DTO enum types
+    - [x] 23.1.1 Test CourtType enum values
       - _Requirements: 2.2_
-    - [ ] 23.1.2 Test BookingStatus enum values
+    - [x] 23.1.2 Test BookingStatus enum values
       - _Requirements: 2.2_
-    - [ ] 23.1.3 Test PaymentStatus enum values
+    - [x] 23.1.3 Test PaymentStatus enum values
       - _Requirements: 2.2_
 
-  - [ ] 23.2 Write unit tests for DTO record classes
-    - [ ] 23.2.1 Test CourtSummaryDto JSON serialization
+  - [x] 23.2 Write unit tests for DTO record classes
+    - [x] 23.2.1 Test CourtSummaryDto JSON serialization
       - _Requirements: 2.3_
-    - [ ] 23.2.2 Test BookingDto monetary field naming
+    - [x] 23.2.2 Test BookingDto monetary field naming
       - _Requirements: 2.4_
-    - [ ] 23.2.3 Test PaymentDto monetary field naming
+    - [x] 23.2.3 Test PaymentDto monetary field naming
       - _Requirements: 2.4_
 
-  - [ ] 23.3 Write unit tests for EventEnvelope
-    - [ ] 23.3.1 Test EventEnvelope validation (null checks)
+  - [x] 23.3 Write unit tests for EventEnvelope
+    - [x] 23.3.1 Test EventEnvelope validation (null checks)
       - _Requirements: 3.2_
-    - [ ] 23.3.2 Test EventEnvelope.create factory method
+    - [x] 23.3.2 Test EventEnvelope.create factory method
       - _Requirements: 3.2_
 
-  - [ ] 23.4 Write unit tests for exception classes
-    - [ ] 23.4.1 Test CourtBookingException error code and HTTP status
+  - [x] 23.4 Write unit tests for exception classes
+    - [x] 23.4.1 Test CourtBookingException error code and HTTP status
       - _Requirements: 4.1_
-    - [ ] 23.4.2 Test ResourceNotFoundException with resource type and ID
+    - [x] 23.4.2 Test ResourceNotFoundException with resource type and ID
       - _Requirements: 4.2_
-    - [ ] 23.4.3 Test ValidationException
+    - [x] 23.4.3 Test ValidationException
       - _Requirements: 4.2_
 
-  - [ ] 23.5 Write unit tests for MoneyUtil
-    - [ ] 23.5.1 Test MoneyUtil.add with overflow handling
+  - [x] 23.5 Write unit tests for MoneyUtil
+    - [x] 23.5.1 Test MoneyUtil.add with overflow handling
       - _Requirements: 4.3_
-    - [ ] 23.5.2 Test MoneyUtil.subtract with underflow handling
+    - [x] 23.5.2 Test MoneyUtil.subtract with underflow handling
       - _Requirements: 4.3_
-    - [ ] 23.5.3 Test MoneyUtil.multiplyByPercentage with boundary values
+    - [x] 23.5.3 Test MoneyUtil.multiplyByPercentage with boundary values
       - _Requirements: 4.3_
-    - [ ] 23.5.4 Test MoneyUtil.calculatePlatformFee
+    - [x] 23.5.4 Test MoneyUtil.calculatePlatformFee
       - _Requirements: 4.3_
-    - [ ] 23.5.5 Test MoneyUtil.calculateNetAmount
+    - [x] 23.5.5 Test MoneyUtil.calculateNetAmount
       - _Requirements: 4.3_
 
-- [ ] 24. Write Unit Tests - Platform Service
-  - [ ] 24.1 Write unit tests for HealthInfoController
-    - [ ] 24.1.1 Test /api/health/info returns service name
+- [x] 24. Write Unit Tests - Platform Service
+  - [x] 24.1 Write unit tests for HealthInfoController
+    - [x] 24.1.1 Test /api/health/info returns service name
       - _Requirements: 6.5_
-    - [ ] 24.1.2 Test /api/health/info returns version
+    - [x] 24.1.2 Test /api/health/info returns version
       - _Requirements: 6.5_
 
-  - [ ] 24.2 Write unit tests for RequestIdFilter
-    - [ ] 24.2.1 Test filter extracts X-Request-ID header
+  - [x] 24.2 Write unit tests for RequestIdFilter
+    - [x] 24.2.1 Test filter extracts X-Request-ID header
       - _Requirements: 27.3_
-    - [ ] 24.2.2 Test filter generates UUID when header missing
+    - [x] 24.2.2 Test filter generates UUID when header missing
       - _Requirements: 27.3_
-    - [ ] 24.2.3 Test filter cleans up MDC after request
+    - [x] 24.2.3 Test filter cleans up MDC after request
       - _Requirements: 27.3_
 
-  - [ ] 24.3 Write unit tests for GlobalExceptionHandler
-    - [ ] 24.3.1 Test ResourceNotFoundException returns 404
+  - [x] 24.3 Write unit tests for GlobalExceptionHandler
+    - [x] 24.3.1 Test ResourceNotFoundException returns 404
       - _Requirements: 4.4_
-    - [ ] 24.3.2 Test ValidationException returns 400
+    - [x] 24.3.2 Test ValidationException returns 400
       - _Requirements: 4.4_
-    - [ ] 24.3.3 Test ConflictException returns 409
+    - [x] 24.3.3 Test ConflictException returns 409
       - _Requirements: 4.4_
 
-- [ ] 25. Write Unit Tests - Transaction Service
-  - [ ] 25.1 Write unit tests for HealthInfoController
-    - [ ] 25.1.1 Test /api/health/info returns service name
+- [x] 25. Write Unit Tests - Transaction Service
+  - [x] 25.1 Write unit tests for HealthInfoController
+    - [x] 25.1.1 Test /api/health/info returns service name
       - _Requirements: 7.5_
-    - [ ] 25.1.2 Test /api/health/info returns version
+    - [x] 25.1.2 Test /api/health/info returns version
       - _Requirements: 7.5_
 
-  - [ ] 25.2 Write unit tests for RequestIdFilter
-    - [ ] 25.2.1 Test filter extracts X-Request-ID header
+  - [x] 25.2 Write unit tests for RequestIdFilter
+    - [x] 25.2.1 Test filter extracts X-Request-ID header
       - _Requirements: 27.3_
-    - [ ] 25.2.2 Test filter generates UUID when header missing
+    - [x] 25.2.2 Test filter generates UUID when header missing
       - _Requirements: 27.3_
 
-  - [ ] 25.3 Write unit tests for GlobalExceptionHandler
-    - [ ] 25.3.1 Test exception mapping to HTTP responses
+  - [x] 25.3 Write unit tests for GlobalExceptionHandler
+    - [x] 25.3.1 Test exception mapping to HTTP responses
       - _Requirements: 4.4_
 
-- [ ] 26. Write Integration Tests
-  - [ ] 26.1 Write Platform Service integration tests with Testcontainers
-    - [ ] 26.1.1 Configure Testcontainers PostgreSQL with PostGIS
+- [x] 26. Write Integration Tests
+  - [x] 26.1 Write Platform Service integration tests with Testcontainers
+    - [x] 26.1.1 Configure Testcontainers PostgreSQL with PostGIS
       - _Requirements: 23.4_
-    - [ ] 26.1.2 Test Flyway migrations apply successfully
+    - [x] 26.1.2 Test Flyway migrations apply successfully
       - _Requirements: 10.1_
-    - [ ] 26.1.3 Test actuator health endpoint with database
+    - [x] 26.1.3 Test actuator health endpoint with database
       - _Requirements: 8.2_
 
-  - [ ] 26.2 Write Transaction Service integration tests with Testcontainers
-    - [ ] 26.2.1 Configure Testcontainers PostgreSQL
+  - [x] 26.2 Write Transaction Service integration tests with Testcontainers
+    - [x] 26.2.1 Configure Testcontainers PostgreSQL
       - _Requirements: 23.4_
-    - [ ] 26.2.2 Test Flyway migrations apply successfully
+    - [x] 26.2.2 Test Flyway migrations apply successfully
       - _Requirements: 11.1_
-    - [ ] 26.2.3 Test actuator health endpoint with database
+    - [x] 26.2.3 Test actuator health endpoint with database
       - _Requirements: 8.5_
 
-  - [ ] 26.3 Write controller slice tests (@WebMvcTest)
-    - [ ] 26.3.1 Test Platform Service HealthInfoController
+  - [x] 26.3 Write controller slice tests (@WebMvcTest)
+    - [x] 26.3.1 Test Platform Service HealthInfoController
       - _Requirements: 6.5_
-    - [ ] 26.3.2 Test Transaction Service HealthInfoController
+    - [x] 26.3.2 Test Transaction Service HealthInfoController
       - _Requirements: 7.5_
 
-- [ ] 27. Final Checkpoint - All Components Complete
+- [x] 27. Final Checkpoint - All Components Complete
   - Ensure all tests pass, ask the user if questions arise.
   - Verify Common Library publishes to GitHub Packages
   - Verify both services build and pass all tests
