@@ -10,7 +10,7 @@ The implementation follows a logical progression: common library first (as a dep
 
 - [ ] 1. Set up Common Library (court-booking-common)
   - [ ] 1.1 Create Gradle project structure with build.gradle.kts
-    - Create `court-booking-common/build.gradle.kts` with group `gr.courtbooking`, name `court-booking-common`, Java 21
+    - Create `court-booking-common/build.gradle.kts` with group `gr.courtbooking`, name `court-booking-common`, Java 25
     - Configure Spring Boot starter dependencies as `compileOnly` scope
     - Add Jackson, JUnit 5, AssertJ, and jqwik dependencies
     - Configure `publishing` block with `maven-publish` plugin for GitHub Packages
@@ -160,7 +160,7 @@ The implementation follows a logical progression: common library first (as a dep
 
 - [x] 3. Set up Platform Service (court-booking-platform-service)
   - [x] 3.1 Create Gradle project structure with build.gradle.kts
-    - Create `court-booking-platform-service/build.gradle.kts` with Spring Boot 3.x plugin, Java 21
+    - Create `court-booking-platform-service/build.gradle.kts` with Spring Boot 4.x plugin, Java 25
     - Add dependencies: Spring Boot Web, Actuator, Data JPA, Data Redis, Spring Kafka, Flyway, PostgreSQL, Hibernate Spatial, springdoc-openapi, jqwik, Testcontainers
     - Configure GitHub Packages repository for common library dependency
     - Configure `tasks.test` block with `useJUnitPlatform()` for JUnit 5 and jqwik
@@ -273,7 +273,7 @@ The implementation follows a logical progression: common library first (as a dep
 
 - [x] 4. Set up Transaction Service (court-booking-transaction-service)
   - [x] 4.1 Create Gradle project structure with build.gradle.kts
-    - Create `court-booking-transaction-service/build.gradle.kts` with Spring Boot 3.x plugin, Java 21
+    - Create `court-booking-transaction-service/build.gradle.kts` with Spring Boot 4.x plugin, Java 25
     - Add dependencies: Spring Boot Web, Actuator, Data JPA, Data Redis, WebSocket, Spring Kafka, Flyway, PostgreSQL, Quartz, springdoc-openapi, jqwik, Testcontainers
     - Configure GitHub Packages repository for common library dependency
     - _Requirements: 7.1, 7.2, 23.1, 23.2, 23.3, 23.4, 23.5_
@@ -580,7 +580,7 @@ The implementation follows a logical progression: common library first (as a dep
 
 - [ ] 9. Create Dockerfiles
   - [ ] 9.1 Create Platform Service Dockerfile
-    - [ ] 9.1.1 Create build stage with Gradle 8.5 and Eclipse Temurin 21
+    - [ ] 9.1.1 Create build stage with Gradle 9.3 and Eclipse Temurin 23
       - _Requirements: 12.1, 12.3_
     - [ ] 9.1.2 Copy build.gradle.kts and settings.gradle.kts first for dependency caching
       - _Requirements: 12.4_
@@ -594,7 +594,7 @@ The implementation follows a logical progression: common library first (as a dep
       - _Requirements: 12.7_
 
   - [ ] 9.2 Create Transaction Service Dockerfile
-    - [ ] 9.2.1 Create build stage with Gradle 8.5 and Eclipse Temurin 21
+    - [ ] 9.2.1 Create build stage with Gradle 9.3 and Eclipse Temurin 23
       - _Requirements: 12.2, 12.3_
     - [ ] 9.2.2 Copy build.gradle.kts and settings.gradle.kts first for dependency caching
       - _Requirements: 12.4_
@@ -812,7 +812,7 @@ The implementation follows a logical progression: common library first (as a dep
   - [ ] 16.3 Configure CI workflow steps
     - [ ] 16.3.1 Add checkout step
       - _Requirements: 13.2_
-    - [ ] 16.3.2 Add Java 21 setup step with Gradle cache
+    - [ ] 16.3.2 Add Java 25 setup step with Gradle cache
       - _Requirements: 13.2_
     - [ ] 16.3.3 Add step to create test schemas (platform schema, PostGIS extension)
       - _Requirements: 13.2_
@@ -839,7 +839,7 @@ The implementation follows a logical progression: common library first (as a dep
     - _Requirements: 13.3_
 
   - [ ] 17.2 Create build-and-push job
-    - [ ] 17.2.1 Configure checkout and Java 21 setup steps
+    - [ ] 17.2.1 Configure checkout and Java 25 setup steps
       - _Requirements: 13.3_
     - [ ] 17.2.2 Add Gradle build step (./gradlew clean build -x test)
       - _Requirements: 13.3_
@@ -922,7 +922,7 @@ The implementation follows a logical progression: common library first (as a dep
   - [ ] 18.3 Configure CI workflow steps
     - [ ] 18.3.1 Add checkout step
       - _Requirements: 14.2_
-    - [ ] 18.3.2 Add Java 21 setup step with Gradle cache
+    - [ ] 18.3.2 Add Java 25 setup step with Gradle cache
       - _Requirements: 14.2_
     - [ ] 18.3.3 Add step to create platform schema first (for cross-schema view references)
       - _Requirements: 14.2, 20.3_
@@ -949,7 +949,7 @@ The implementation follows a logical progression: common library first (as a dep
     - _Requirements: 14.3_
 
   - [ ] 19.2 Create build-and-push job
-    - [ ] 19.2.1 Configure checkout and Java 21 setup steps
+    - [ ] 19.2.1 Configure checkout and Java 25 setup steps
       - _Requirements: 14.3_
     - [ ] 19.2.2 Add Gradle build step
       - _Requirements: 14.3_
@@ -1084,7 +1084,7 @@ The implementation follows a logical progression: common library first (as a dep
   - [ ] 22.1 Create Platform Service README.md
     - [ ] 22.1.1 Add project overview section
       - _Requirements: 30.1_
-    - [ ] 22.1.2 Add prerequisites section (Java 21, Gradle, Docker)
+    - [ ] 22.1.2 Add prerequisites section (Java 25, Gradle 9.3.1, Docker)
       - _Requirements: 30.1_
     - [ ] 22.1.3 Add Quick Start section for 5-minute setup
       - _Requirements: 30.4_

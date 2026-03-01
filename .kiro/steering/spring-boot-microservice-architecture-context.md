@@ -2,7 +2,7 @@
 inclusion: manual
 ---
 
-# Spring Boot 3.x & Java 21+ Microservice Architecture Context
+# Spring Boot 4.x & Java 25+ Microservice Architecture Context
 
 > When designing or implementing any Spring Boot microservice in this project, follow the patterns and standards in this document. It codifies the hexagonal architecture from Buckpal (thombergs), the testing rigor from rieckpil's Masterclass, and operational best practices from Spring PetClinic Microservices and abhisheksr01's best-practices repo.
 
@@ -893,10 +893,10 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 
 | Category | Technology |
 |----------|-----------|
-| Framework | Spring Boot 3.4+, Java 21+ |
-| Cloud | Spring Cloud 2023.x |
-| Namespace | Jakarta EE 9+ |
-| Data | Spring Data JPA, Hibernate 6.x, Flyway |
+| Framework | Spring Boot 4.x, Java 25+ |
+| Cloud | Spring Cloud 2024.x |
+| Namespace | Jakarta EE 11+ |
+| Data | Spring Data JPA, Hibernate 7.x, Flyway |
 | API Docs | SpringDoc OpenAPI 3 |
 | Messaging | Apache Kafka, Spring Cloud Stream |
 | Metrics | Micrometer, Prometheus, Grafana |
@@ -944,7 +944,7 @@ The key is to take shortcuts **consciously** and document the trade-off, not acc
 
 ## 11. Reference Repository Catalog
 
-> The following GitHub repositories serve as state-of-the-art references for building production-grade Spring Boot 3.x / Java 21+ microservices. Each repository is selected for specific architectural patterns relevant to the court booking platform. When implementing, cross-reference the appropriate repository for the pattern you need.
+> The following GitHub repositories serve as state-of-the-art references for building production-grade Spring Boot 4.x / Java 25+ microservices. Each repository is selected for specific architectural patterns relevant to the court booking platform. When implementing, cross-reference the appropriate repository for the pattern you need.
 
 ### Tier 1: Primary Architecture References (Already Codified Above)
 
@@ -953,7 +953,7 @@ The key is to take shortcuts **consciously** and document the trade-off, not acc
 | [thombergs/buckpal](https://github.com/thombergs/buckpal) | ~2.5k ⭐ | Hexagonal Architecture | Package structure, ports & adapters, use case pattern, self-validating commands, conscious shortcuts, dependency inversion |
 | [spring-petclinic/spring-petclinic-microservices](https://github.com/spring-petclinic/spring-petclinic-microservices) | ~1.5k ⭐ | Spring Cloud Microservices | Service discovery (Eureka), API Gateway, Config Server, Resilience4j circuit breakers, Micrometer tracing, OpenTelemetry, Docker Compose orchestration |
 | [rieckpil/testing-spring-boot-applications-masterclass](https://github.com/rieckpil/testing-spring-boot-applications-masterclass) | ~500 ⭐ | Testing Standards | @WebMvcTest, @DataJpaTest, @JsonTest, @RestClientTest, Testcontainers with real PostgreSQL, WireMock for external APIs, Awaitility for async, test naming conventions |
-| [abhisheksr01/spring-boot-microservice-best-practices](https://github.com/abhisheksr01/spring-boot-microservice-best-practices) | ~300 ⭐ | DevSecOps & CI/CD | Java 21+, Gradle build, Checkstyle, JaCoCo, Hadolint, OWASP dependency check, Docker image vulnerability scanning, Kubernetes deployment, MapStruct, WireMock, Cucumber E2E tests |
+| [abhisheksr01/spring-boot-microservice-best-practices](https://github.com/abhisheksr01/spring-boot-microservice-best-practices) | ~300 ⭐ | DevSecOps & CI/CD | Java 25+, Gradle build, Checkstyle, JaCoCo, Hadolint, OWASP dependency check, Docker image vulnerability scanning, Kubernetes deployment, MapStruct, WireMock, Cucumber E2E tests |
 
 ### Tier 2: Microservice Patterns & Event-Driven Architecture
 
@@ -976,7 +976,7 @@ The key is to take shortcuts **consciously** and document the trade-off, not acc
 | Repository | Focus Area | What to Extract |
 |-----------|-----------|----------------|
 | [macrozheng/mall](https://github.com/macrozheng/mall) ~78k ⭐ | E-Commerce Platform | Spring Boot + MyBatis full e-commerce system, order management, payment integration, Redis caching strategies, Elasticsearch, Docker deployment — reference for booking/payment flow patterns |
-| [macrozheng/mall-swarm](https://github.com/macrozheng/mall-swarm) ~12k ⭐ | Microservices E-Commerce | Spring Cloud Alibaba microservices edition, Spring Boot 3.x, gateway routing, service discovery, distributed transactions — reference for splitting monolith into Platform + Transaction services |
+| [macrozheng/mall-swarm](https://github.com/macrozheng/mall-swarm) ~12k ⭐ | Microservices E-Commerce | Spring Cloud Alibaba microservices edition, Spring Boot 4.x, gateway routing, service discovery, distributed transactions — reference for splitting monolith into Platform + Transaction services |
 | [dandoran/spring-data-postgis-geospatial](https://github.com/dandoran/spring-data-postgis-geospatial) | PostGIS + Spring Data | Hibernate Spatial with PostGIS, Flyway migrations for spatial schema, distance queries using ST_DWithin — directly applicable to court discovery geospatial queries |
 | [dnjscksdn98/spring-redis-chat-service](https://github.com/dnjscksdn98/spring-redis-chat-service) | WebSocket + Redis Pub/Sub | Spring Boot WebSocket with STOMP, Redis Pub/Sub for horizontal scaling, real-time messaging — directly applicable to availability broadcasting and in-app notifications |
 
@@ -2012,7 +2012,7 @@ public record BookingResponse(
 - [Testing Spring Boot Applications Masterclass — rieckpil](https://github.com/rieckpil/testing-spring-boot-applications-masterclass) — Testing standards
 - [Spring Boot Test Slices — rieckpil](https://rieckpil.de/spring-boot-test-slices-overview-and-usage/) — Complete slice test guide
 - [Spring PetClinic Microservices](https://github.com/spring-petclinic/spring-petclinic-microservices) — Spring Cloud patterns
-- [Spring Boot Microservice Best Practices — abhisheksr01](https://github.com/abhisheksr01/spring-boot-microservice-best-practices) — DevSecOps, Java 21+
+- [Spring Boot Microservice Best Practices — abhisheksr01](https://github.com/abhisheksr01/spring-boot-microservice-best-practices) — DevSecOps, Java 25+
 - [FTGO Application — microservices-patterns](https://github.com/microservices-patterns/ftgo-application) — Saga, event-driven patterns (~3.7k ⭐, 1.4k forks)
 - [Eventuate Tram Sagas](https://github.com/eventuate-tram/eventuate-tram-sagas) — Distributed transaction sagas
 - [Google Online Boutique — microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo) — Cloud-native K8s reference (~17k ⭐)

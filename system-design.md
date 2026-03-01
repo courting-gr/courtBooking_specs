@@ -645,13 +645,13 @@ Developer ──► GitHub PR ──► GitHub Actions Pipeline:
 
 | Repository | Tech Stack | Purpose |
 |------------|-----------|---------|
-| `court-booking-platform-service` | Spring Boot, Java 21 | Auth, users, courts, weather, analytics, support |
-| `court-booking-transaction-service` | Spring Boot, Java 21 | Bookings, payments, notifications, waitlist, matches |
+| `court-booking-platform-service` | Spring Boot 4.x, Java 25 | Auth, users, courts, weather, analytics, support |
+| `court-booking-transaction-service` | Spring Boot 4.x, Java 25 | Bookings, payments, notifications, waitlist, matches |
 | `court-booking-mobile-app` | Flutter (Dart) | iOS, Android, Web customer app |
 | `court-booking-admin-web` | React, TypeScript | Court owner + platform admin portal |
 | `court-booking-qa` | pytest, Locust, Playwright, Patrol | Functional, stress, contract, UI tests |
 | `court-booking-infrastructure` | Terraform, Kubernetes, Helm | DigitalOcean provisioning, K8s manifests, Istio |
-| `court-booking-common` | Java 21 | Shared DTOs, Kafka event classes, exceptions, utilities. See [`LIBRARY-SPEC.md`](court-booking-common/LIBRARY-SPEC.md) |
+| `court-booking-common` | Java 25 | Shared DTOs, Kafka event classes, exceptions, utilities. See [`LIBRARY-SPEC.md`](court-booking-common/LIBRARY-SPEC.md) |
 
 ## 11. Key Design Decisions
 

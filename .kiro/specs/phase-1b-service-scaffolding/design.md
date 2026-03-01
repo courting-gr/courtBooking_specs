@@ -14,9 +14,9 @@ The deliverable is both services running on DigitalOcean Kubernetes (DOKS) — e
 
 | Component | Technology |
 |-----------|------------|
-| Language | Java 21 |
-| Framework | Spring Boot 3.x |
-| Build | Gradle (Kotlin DSL) |
+| Language | Java 25 |
+| Framework | Spring Boot 4.x |
+| Build | Gradle 9.3.1 (Kotlin DSL) |
 | Database | PostgreSQL 15 + PostGIS 3.3 |
 | Messaging | Kafka (Redpanda Serverless) |
 | Cache | Redis 7 |
@@ -2704,10 +2704,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '23'
           distribution: 'temurin'
           cache: gradle
 
@@ -2751,10 +2751,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '23'
           distribution: 'temurin'
           cache: gradle
 
@@ -2818,10 +2818,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '23'
           distribution: 'temurin'
           cache: gradle
 
