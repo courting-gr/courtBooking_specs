@@ -6,8 +6,8 @@ Implements the complete court management subsystem for the Court Booking Platfor
 
 ## Tasks
 
-- [ ] 1. Flyway migrations and domain enums
-  - [ ] 1.1 Create Flyway migration `V6__seed_national_holidays.sql` seeding the 13 Greek national holidays into `holiday_templates` table
+- [x] 1. Flyway migrations and domain enums
+  - [x] 1.1 Create Flyway migration `V6__seed_national_holidays.sql` seeding the 13 Greek national holidays into `holiday_templates` table
     - Insert with `is_national = true`, `owner_id = NULL`, `is_active = true`
     - Fixed-date holidays: New Year's Day (FIXED:01-01), Epiphany (FIXED:01-06), Independence Day (FIXED:03-25), Labour Day (FIXED:05-01), Assumption of Mary (FIXED:08-15), Ochi Day (FIXED:10-28), Christmas Day (FIXED:12-25), Second Day of Christmas (FIXED:12-26)
     - Easter-relative holidays: Clean Monday (EASTER_OFFSET:-48), Orthodox Good Friday (EASTER_OFFSET:-2), Orthodox Easter Sunday (EASTER_OFFSET:0), Orthodox Easter Monday (EASTER_OFFSET:1), Whit Monday (EASTER_OFFSET:50)
@@ -15,16 +15,16 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - Use idempotent `INSERT ... ON CONFLICT DO NOTHING` pattern
     - Note: Migration version number may need adjustment based on existing migrations in the codebase
     - _Requirements: 8.6_
-  - [ ] 1.2 Create Flyway migration `V6.1__create_cross_schema_views.sql` creating cross-schema views for Transaction Service
+  - [x] 1.2 Create Flyway migration `V6.1__create_cross_schema_views.sql` creating cross-schema views for Transaction Service
     - `platform.v_court_summary`: id, owner_id, name_el, name_en, court_type, location_type, location, timezone, base_price_cents, duration_minutes, max_capacity, confirmation_mode, confirmation_timeout_hours, waitlist_enabled, visible, version FROM platform.courts WHERE visible = TRUE; GRANT SELECT to transaction_service_role
     - `platform.v_court_cancellation_tiers`: court_id, threshold_hours, refund_percent, sort_order FROM platform.cancellation_tiers ORDER BY court_id, sort_order; GRANT SELECT to transaction_service_role
     - `platform.v_user_skill_level`: user_id, court_type, level FROM platform.skill_levels; GRANT SELECT to transaction_service_role
     - _Requirements: 30.1, 30.2, 30.3_
-  - [ ] 1.3 Create Flyway migration `V6.2__create_booking_check_view.sql` for cross-schema booking conflict checks
+  - [x] 1.3 Create Flyway migration `V6.2__create_booking_check_view.sql` for cross-schema booking conflict checks
     - Create read-only view or GRANT SELECT on `transaction.bookings` for Platform Service to check future confirmed bookings
     - Until Phase 4 deploys bookings, queries against this view return empty results
     - _Requirements: 2.2, 3.1, 12.4_
-  - [ ] 1.4 Create domain enums in `gr.courtbooking.platform.domain.model`
+  - [x] 1.4 Create domain enums in `gr.courtbooking.platform.domain.model`
     - `CourtType`: TENNIS(60, 4), PADEL(90, 4), BASKETBALL(60, 10), FOOTBALL_5X5(60, 10) — with defaultDurationMinutes and defaultMaxCapacity fields
     - `LocationType`: INDOOR, OUTDOOR
     - `ConfirmationMode`: INSTANT, MANUAL
@@ -39,48 +39,48 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - _Requirements: 1.1, 5.1, 7.5, 17.1, 18.1, 21.3, 37.1, 38.1, 39.1_
 
 
-- [ ] 2. Domain layer — value objects
-  - [ ] 2.1 Create `CourtId` value object record with compact constructor null validation
+- [x] 2. Domain layer — value objects
+  - [x] 2.1 Create `CourtId` value object record with compact constructor null validation
     - Package: `gr.courtbooking.platform.domain.model`
     - `public record CourtId(UUID value)` with `requireNonNull(value, "Court ID cannot be null")`
     - _Requirements: 1.1_
-  - [ ] 2.2 Create `GeoLocation` value object record with coordinate validation
+  - [x] 2.2 Create `GeoLocation` value object record with coordinate validation
     - `public record GeoLocation(double latitude, double longitude)` — reject latitude outside [-90, 90], longitude outside [-180, 180]
     - Include `distanceKm(GeoLocation other)` method using Haversine formula
     - _Requirements: 1.5, 1.9, 13.1, 13.10_
-  - [ ] 2.3 Create `AvailabilityWindow` value object record with time ordering validation
+  - [x] 2.3 Create `AvailabilityWindow` value object record with time ordering validation
     - `public record AvailabilityWindow(UUID id, DayOfWeek dayOfWeek, LocalTime startTime, LocalTime endTime)` — reject endTime not after startTime
     - Include `overlaps(AvailabilityWindow other)` method for same-day overlap detection
     - _Requirements: 6.2, 6.3, 6.4_
-  - [ ] 2.4 Create `AvailabilityOverride` value object record
+  - [x] 2.4 Create `AvailabilityOverride` value object record
     - Fields: id, courtId, date, startTime (nullable for full-day), endTime (nullable for full-day), reason, source (OverrideSource), holidayTemplateId, createdAt
     - Include `isFullDay()` method
     - _Requirements: 7.1, 7.5_
-  - [ ] 2.5 Create `PricingRule` value object record with multiplier range validation
+  - [x] 2.5 Create `PricingRule` value object record with multiplier range validation
     - Fields: id, dayOfWeek, startTime, endTime, multiplier (BigDecimal 0.10–5.00), label
     - Include `applyTo(int basePriceCents)` method: `basePriceCents * multiplier` rounded HALF_UP
     - _Requirements: 18.1, 18.2, 18.8_
-  - [ ] 2.6 Create `CancellationTier` value object record with refund percent validation
+  - [x] 2.6 Create `CancellationTier` value object record with refund percent validation
     - Fields: id, thresholdHours, refundPercent (0–100), sortOrder
     - _Requirements: 19.1, 19.2_
-  - [ ] 2.7 Create `HolidayTemplate` value object record
+  - [x] 2.7 Create `HolidayTemplate` value object record
     - Fields: id, ownerId (nullable for national), nameEl, nameEn, datePattern (DatePattern), isNational, isActive, createdAt
     - _Requirements: 8.1, 9.1_
-  - [ ] 2.8 Create `CourtHolidaySubscription` value object record
+  - [x] 2.8 Create `CourtHolidaySubscription` value object record
     - Fields: id, courtId, holidayTemplateId, autoRenew, createdAt
     - _Requirements: 10.4, 11.1_
-  - [ ] 2.9 Create `DatePattern` value object record with pattern validation and date calculation
+  - [x] 2.9 Create `DatePattern` value object record with pattern validation and date calculation
     - Validate pattern matches `^(FIXED:\\d{2}-\\d{2}|EASTER_OFFSET:-?\\d+)$`
     - `calculateDate(int year)` method: parse FIXED patterns as MM-DD, EASTER_OFFSET patterns via OrthodoxEasterCalculator
     - _Requirements: 8.2, 9.6_
-  - [ ] 2.10 Create `SkillLevel` value object record with level range validation
+  - [x] 2.10 Create `SkillLevel` value object record with level range validation
     - Fields: userId, courtType, level (1–7), label
     - Include static `labelFor(int level)` method mapping 1→Beginner, 2→Advanced Beginner, ..., 7→Professional
     - _Requirements: 24.1, 24.3, 24.4_
-  - [ ] 2.11 Create `WeatherForecast` value object record
+  - [x] 2.11 Create `WeatherForecast` value object record
     - Fields: temperature, feelsLike, humidity, windSpeed, precipitationProbability, weatherCondition, weatherIcon, recommendation (WeatherRecommendation)
     - _Requirements: 21.2_
-  - [ ] 2.12 Create `OrthodoxEasterCalculator` domain service
+  - [x] 2.12 Create `OrthodoxEasterCalculator` domain service
     - Package: `gr.courtbooking.platform.domain.service`
     - Static `calculate(int year)` method implementing Meeus Julian algorithm
     - Compute a, b, c, d, e, month, day from Julian calendar, then add 13 days for Gregorian conversion (1900–2099)
@@ -88,8 +88,8 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - _Requirements: 8.3_
 
 
-- [ ] 3. Domain layer — rich entities
-  - [ ] 3.1 Create `Court` rich domain entity with creation constructor and `withId()` reconstitution factory
+- [x] 3. Domain layer — rich entities
+  - [x] 3.1 Create `Court` rich domain entity with creation constructor and `withId()` reconstitution factory
     - Package: `gr.courtbooking.platform.domain.model`
     - Creation constructor: ownerId, nameEl, nameEn, descriptionEl, descriptionEn, courtType, locationType, location (GeoLocation), address, timezone, basePriceCents, durationMinutes, maxCapacity, confirmationMode, confirmationTimeoutHours, waitlistEnabled, amenities — sets defaults (visible=false, version=0, imageUrls=empty, averageRating=null, totalReviews=0)
     - Business methods: `updateDetails(CourtUpdateDetails)`, `setVisibility(boolean, boolean ownerVerified, String stripeConnectStatus)`, `addImages(List<String>)`, `removeImage(String)`, `reorderImages(List<String>)`, `validateForDeletion(int futureBookingCount, int pendingPayoutAmount)`
@@ -97,29 +97,29 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - HTML sanitization on descriptionEl/descriptionEn: allow only `<p>`, `<br>`, `<strong>`, `<em>`, `<ul>`, `<ol>`, `<li>`
     - Image limit enforcement: max 20 images
     - _Requirements: 1.1, 1.2, 1.3, 1.14, 1.15, 2.1, 2.5, 3.1, 3.2, 4.3, 4.8, 4.9, 33.1, 33.5, 39.2_
-  - [ ] 3.2 Create `VerificationRequest` domain entity with creation constructor and `withId()` reconstitution factory
+  - [x] 3.2 Create `VerificationRequest` domain entity with creation constructor and `withId()` reconstitution factory
     - Fields: id, courtOwnerId, businessName, taxId, businessType, businessAddress, proofDocumentUrl, status (VerificationStatus), reviewedBy, reviewNotes, rejectionReason, previousRequestId, submittedAt, reviewedAt
     - Business methods: `approve(UserId adminId, String notes)`, `reject(UserId adminId, String reason)`, `isPending()`, `isOverSla(Duration slaThreshold)`
     - _Requirements: 17.1, 17.4, 17.5, 17.6, 17.8_
-  - [ ] 3.3 Create `AuditLogEntry` domain entity (append-only, no setters)
+  - [x] 3.3 Create `AuditLogEntry` domain entity (append-only, no setters)
     - Fields: id, courtOwnerId, courtId (nullable), action, entityType, entityId, changes (Map<String, Object>), ipAddress, userAgent, createdAt
     - No update methods — enforces append-only invariant at domain level
     - _Requirements: 27.1, 27.2, 27.3_
-  - [ ] 3.4 Create `ReminderRule` domain entity with creation constructor and `withId()` reconstitution factory
+  - [x] 3.4 Create `ReminderRule` domain entity with creation constructor and `withId()` reconstitution factory
     - Fields: id, courtOwnerId, courtId (nullable — null means all owner's courts), ruleType, triggerHoursBefore, triggerTime, thresholdPercent, channels (Set<NotificationChannel>), enabled, createdAt, updatedAt
     - `validate()` method enforcing rule-type-specific field requirements per Req 38.5
     - _Requirements: 38.1, 38.5_
-  - [ ] 3.5 Create `NotificationPreference` domain entity
+  - [x] 3.5 Create `NotificationPreference` domain entity
     - Fields: id, courtOwnerId, eventType, pushEnabled, emailEnabled, inAppEnabled
     - `validate()` method: at least one channel must be enabled
     - _Requirements: 37.1, 37.5_
-  - [ ] 3.6 Create `CourtDefaults` domain entity
+  - [x] 3.6 Create `CourtDefaults` domain entity
     - Fields: courtOwnerId, defaultDurationMinutes, defaultConfirmationMode, defaultConfirmationTimeoutHours, defaultCancellationTiers, defaultAmenities, updatedAt
     - _Requirements: 25.1, 25.3_
 
 
-- [ ] 4. Domain layer — exception classes
-  - [ ] 4.1 Create Phase 3 exception hierarchy in `gr.courtbooking.platform.domain.exception`
+- [x] 4. Domain layer — exception classes
+  - [x] 4.1 Create Phase 3 exception hierarchy in `gr.courtbooking.platform.domain.exception`
     - Base: `CourtManagementException extends RuntimeException` with errorCode and details map
     - Validation (400): `CoordinateValidationException`, `AmenityValidationException`, `ImageValidationException`, `OverlapValidationException`, `InvalidDateRangeException`, `BulkLimitExceededException`, `AtLeastOneChannelRequiredException`, `InvalidImageUrlsException`
     - Conflict (409): `ConcurrentModificationException`, `CourtHasFutureBookingsException`, `CourtHasPendingPayoutsException`, `HolidayNameExistsException`, `VerificationAlreadyPendingException`, `VerificationAlreadyApprovedException`, `RuleTypeExistsException`
@@ -220,8 +220,8 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - **Validates: Requirements 34.3**
 
 
-- [ ] 6. Application layer — self-validating commands and port interfaces
-  - [ ] 6.1 Create self-validating command records with compact constructor validation
+- [x] 6. Application layer — self-validating commands and port interfaces
+  - [x] 6.1 Create self-validating command records with compact constructor validation
     - Package: `gr.courtbooking.platform.application.port.in`
     - `CreateCourtCommand`: ownerId, nameEl, nameEn, descriptionEl, descriptionEn, courtType, locationType, address, latitude, longitude, durationMinutes, maxCapacity, basePriceCents, confirmationMode, confirmationTimeoutHours, waitlistEnabled, amenities, timezone — validate coordinates, positive integers, bilingual lengths, amenity enum
     - `UpdateCourtCommand`: courtId, ownerId, version, partial update fields, confirmed flag — validate version present
@@ -257,7 +257,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - `DeleteReminderRuleCommand`: ruleId, courtOwnerId
     - `SetReminderRuleEnabledCommand`: ruleId, courtOwnerId, enabled
     - _Requirements: 1.1–1.15, 2.1, 3.1, 4.1, 6.2, 7.1, 9.1, 10.1, 17.1, 18.1, 19.1, 23.1, 24.1, 25.1, 33.1, 35.1, 37.1, 38.1_
-  - [ ] 6.2 Create incoming port interfaces (use cases and queries)
+  - [x] 6.2 Create incoming port interfaces (use cases and queries)
     - Package: `gr.courtbooking.platform.application.port.in`
     - Court management: `CreateCourtUseCase`, `UpdateCourtUseCase`, `DeleteCourtUseCase`, `GetCourtQuery`
     - Court images: `ManageCourtImagesUseCase`
@@ -274,7 +274,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - Reminders & notifications: `ManageReminderRulesUseCase`, `ManageNotificationPreferencesUseCase`
     - Internal: `GetStripeConnectStatusUseCase`
     - _Requirements: 1–41_
-  - [ ] 6.3 Create outgoing port interfaces
+  - [x] 6.3 Create outgoing port interfaces
     - Package: `gr.courtbooking.platform.application.port.out`
     - Persistence: `LoadCourtPort`, `SaveCourtPort`, `LoadAvailabilityPort`, `SaveAvailabilityPort`, `HolidayPersistencePort`, `VerificationPersistencePort`, `PricingRulePersistencePort`, `CancellationTierPersistencePort`, `FavoritesPersistencePort`, `SkillLevelPersistencePort`, `CourtDefaultsPersistencePort`, `PreferencesPersistencePort`, `ReminderRulePersistencePort`, `NotificationPreferencesPersistencePort`, `BookingCheckPort`, `AuditLogPort`
     - External: `ImageStoragePort`, `WeatherApiPort`
@@ -283,37 +283,37 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - _Requirements: 1–41_
 
 
-- [ ] 7. Application layer — court management services
-  - [ ] 7.1 Implement `CourtManagementService` (create, update, delete)
+- [x] 7. Application layer — court management services
+  - [x] 7.1 Implement `CourtManagementService` (create, update, delete)
     - Create: validate inputs, apply court type defaults for omitted fields, apply court owner defaults (CourtDefaultsPersistencePort), determine visibility from owner verified + stripeConnectStatus, save court, log audit entry, publish COURT_UPDATED Kafka event
     - Update: load court with owner check, validate version (optimistic locking), check future bookings via BookingCheckPort for breaking changes (courtType, durationMinutes, maxCapacity), validate courtType change compatibility with existing bookings (Req 5.5), apply updates, increment version, save, log audit, publish COURT_UPDATED (+ PRICING_UPDATED if basePriceCents changed)
     - Delete: load court with owner check, check future bookings and pending payouts via BookingCheckPort, delete images via ImageStoragePort, delete court (cascades), log audit, publish COURT_DELETED, invalidate availability cache
     - _Requirements: 1.1–1.15, 2.1–2.8, 3.1–3.6, 5.5_
-  - [ ] 7.2 Implement `ManageCourtImagesService`
+  - [x] 7.2 Implement `ManageCourtImagesService`
     - Upload: validate format (JPEG/PNG/WebP), size (≤10MB), count (current + new ≤ 20), strip EXIF metadata, upload to ImageStoragePort, append CDN URLs to court imageUrls
     - Delete: validate ownership, remove from Spaces via ImageStoragePort, update court imageUrls
     - Reorder: validate ownership, validate provided URLs match existing, update court imageUrls order
     - _Requirements: 4.1–4.9_
-  - [ ] 7.3 Implement `UpdateCourtVisibilityService`
+  - [x] 7.3 Implement `UpdateCourtVisibilityService`
     - Validate ownership, check owner verified status and stripeConnectStatus, update visible field, log audit, publish COURT_UPDATED event
     - Reject visible=true for unverified owners or non-ACTIVE Stripe Connect
     - _Requirements: 33.1–33.5, 39.2_
-  - [ ] 7.4 Implement `UpdateConfirmationModeService`
+  - [x] 7.4 Implement `UpdateConfirmationModeService`
     - Validate ownership, update confirmationMode, publish COURT_UPDATED event
     - _Requirements: 2.9_
-  - [ ] 7.5 Implement `UpdateWaitlistConfigService`
+  - [x] 7.5 Implement `UpdateWaitlistConfigService`
     - Validate ownership, update waitlistEnabled, publish COURT_UPDATED event
     - _Requirements: 2.10_
 
-- [ ] 8. Application layer — availability and holiday services
-  - [ ] 8.1 Implement `AvailabilityService`
+- [x] 8. Application layer — availability and holiday services
+  - [x] 8.1 Implement `AvailabilityService`
     - GetWindows: load windows by courtId
     - UpdateWindows: validate no overlaps, replace windows, invalidate cache, publish AVAILABILITY_UPDATED, log audit
     - GetAvailability: check cache (AvailabilityCachePort), on miss compute from windows - overrides - bookings, apply pricing rules, cache result, return with cacheStatus
     - Support optional durationMinutes override for slot computation
     - Handle Redis unavailability gracefully (fall through to DB)
     - _Requirements: 6.1–6.7, 20.1–20.10, 34.1–34.5_
-  - [ ] 8.2 Implement `HolidayService`
+  - [x] 8.2 Implement `HolidayService`
     - GetNationalHolidays: load national templates, calculate dates for current year + 2 years via OrthodoxEasterCalculator
     - CreateCustomHoliday: validate ownership, check name uniqueness, save template
     - UpdateCustomHoliday: validate ownership, apply changes; prompt whether to update only future override instances or leave existing unchanged (Req 11.5)
@@ -322,7 +322,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - GetCalendar: load overrides for date range, differentiate sources (MANUAL/HOLIDAY_NATIONAL/HOLIDAY_CUSTOM), include hasBookings flag via BookingCheckPort
     - ManageCourtHolidays: get subscriptions by courtId, remove subscription with override handling
     - _Requirements: 8.1–8.6, 9.1–9.7, 10.1–10.11, 11.1–11.7, 12.1–12.6_
-  - [ ] 8.3 Implement `ManageAvailabilityOverridesService`
+  - [x] 8.3 Implement `ManageAvailabilityOverridesService`
     - Create: validate ownership, prevent duplicates, set source=MANUAL, save override, invalidate cache, publish AVAILABILITY_UPDATED, log audit
     - GetOverrides: load by courtId with optional date range filter
     - Delete: validate ownership, delete override, invalidate cache, publish AVAILABILITY_UPDATED, log audit
@@ -330,18 +330,18 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - _Requirements: 7.1–7.8, 11.7_
 
 
-- [ ] 9. Application layer — pricing, cancellation, and verification services
-  - [ ] 9.1 Implement `PricingService`
+- [x] 9. Application layer — pricing, cancellation, and verification services
+  - [x] 9.1 Implement `PricingService`
     - GetPricingRules: load rules by courtId
     - UpdatePricingRules: validate multiplier range (0.10–5.00), validate no overlaps per day, replace all rules, publish PRICING_UPDATED, log audit
     - CalculatePrice: load court base price and applicable pricing rule for date/time, compute effective price = basePriceCents * multiplier (rounded HALF_UP), return 1.00 multiplier if no rule matches
     - _Requirements: 18.1–18.8_
-  - [ ] 9.2 Implement `CancellationService`
+  - [x] 9.2 Implement `CancellationService`
     - GetCancellationTiers: load tiers by courtId sorted by sortOrder
     - UpdateCancellationTiers: validate refund percent (0–100), validate ordering (refund decreases as threshold decreases), replace all tiers, publish CANCELLATION_POLICY_UPDATED, log audit
     - Default policy: 100% refund when no tiers configured
     - _Requirements: 19.1–19.8_
-  - [ ] 9.3 Implement `VerificationService`
+  - [x] 9.3 Implement `VerificationService`
     - Submit: check no pending request exists, upload proof document to ImageStoragePort, create request with PENDING_REVIEW status, link previousRequestId if re-submission, publish NOTIFICATION_REQUESTED to notify admins
     - Approve (admin): update status to APPROVED, set owner verified=true, set all courts visible=true, publish NOTIFICATION_REQUESTED to notify owner, log audit
     - Reject (admin): update status to REJECTED with reason, publish NOTIFICATION_REQUESTED to notify owner, log audit
@@ -350,7 +350,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - DeleteDocument: validate ownership, check verification not already approved, delete from Spaces
     - Check notification preferences before publishing (notifyVerificationStatus)
     - _Requirements: 17.1–17.12, 23.7_
-  - [ ] 9.4 Implement re-verification flagging in `UserService` (Phase 2 extension)
+  - [x] 9.4 Implement re-verification flagging in `UserService` (Phase 2 extension)
     - Modify the Phase 2 `UserService` user profile update logic: when court owner updates business info fields (businessName, taxId, businessAddress) that were part of the original verification, flag the profile for re-verification review
     - Flag profile for re-verification review WITHOUT revoking verified status — courts remain visible during re-review
     - Log audit entry with action REVERIFICATION_FLAGGED
