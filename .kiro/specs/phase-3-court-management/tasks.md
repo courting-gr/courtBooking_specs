@@ -294,7 +294,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - Delete: validate ownership, remove from Spaces via ImageStoragePort, update court imageUrls
     - Reorder: validate ownership, validate provided URLs match existing, update court imageUrls order
     - _Requirements: 4.1–4.9_
-  - [x] 7.3 Implement `UpdateCourtVisibilityService`
+  - [] 7.3 Implement `UpdateCourtVisibilityService`
     - Validate ownership, check owner verified status and stripeConnectStatus, update visible field, log audit, publish COURT_UPDATED event
     - Reject visible=true for unverified owners or non-ACTIVE Stripe Connect
     - _Requirements: 33.1–33.5, 39.2_
@@ -356,57 +356,57 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - Log audit entry with action REVERIFICATION_FLAGGED
     - _Requirements: 17.9_
 
-- [ ] 10. Application layer — search, weather, and personalization services
-  - [ ] 10.1 Implement `CourtSearchService`
+- [x] 10. Application layer — search, weather, and personalization services
+  - [x] 10.1 Implement `CourtSearchService`
     - SearchCourts: execute PostGIS ST_DWithin for radius search or ST_MakeEnvelope for map bounds, filter by courtType/locationType/date/startTime, only visible=true courts, calculate distance via ST_Distance, include isFavorite for authenticated users, support sorting (distance/price/rating/name), enforce max page size 200, return suggestion on zero results
     - GetMapData: aggregate courts + weather (+ openMatches stub as null), handle partial failures with warnings array
     - GetCourtDetail: load court by ID, include availability windows/pricing rules/cancellation tiers, include weather for OUTDOOR courts with date param, include isFavorite, return 404 for non-existent or invisible courts (unless owner)
     - GetCourtsByOwner: load all courts for owner regardless of visibility, support filtering and sorting, include `stripeConnectStatus` as a top-level field in the response (Req 39.6) to help court owners understand visibility status
     - _Requirements: 13.1–13.12, 14.1–14.4, 15.1–15.7, 16.1–16.5, 39.6_
-  - [ ] 10.2 Implement `WeatherService`
+  - [x] 10.2 Implement `WeatherService`
     - GetForecast: check cache (WeatherCachePort), on miss call WeatherApiPort, determine recommendation based on conditions, cache result, return
     - Validate date within 7-day forecast window, return available=false for dates beyond window
     - Handle API unavailability gracefully (return available=false message)
     - Rate limiting: respect 60 calls/minute limit, return cached data (even stale) when rate limited
     - Round coordinates to 2 decimal places for cache key
     - _Requirements: 21.1–21.9_
-  - [ ] 10.3 Implement `FavoritesService`
+  - [x] 10.3 Implement `FavoritesService`
     - AddFavorite: idempotent save (201 on new, 200 on existing)
     - RemoveFavorite: idempotent delete (204 regardless)
     - GetFavorites: load favorited courts with summary info, calculate distanceKm if coordinates provided
     - _Requirements: 22.1–22.6_
-  - [ ] 10.4 Implement `PreferencesService` (Phase 3 additions)
+  - [x] 10.4 Implement `PreferencesService` (Phase 3 additions)
     - GetPreferences: load from preferences table, apply defaults for unset fields
     - UpdatePreferences: upsert preferences including Phase 3 fields (notifyVerificationStatus, notifyHolidayGeneration)
     - Default values: maxSearchDistanceKm=10.0, all notification toggles=true
     - _Requirements: 23.1–23.8_
-  - [ ] 10.5 Implement `SkillLevelService`
+  - [x] 10.5 Implement `SkillLevelService`
     - GetSkillLevels: load by userId, map level numbers to labels
     - UpdateSkillLevels: validate level 1-7, upsert per courtType
     - _Requirements: 24.1–24.5_
-  - [ ] 10.6 Implement `CourtDefaultsService`
+  - [x] 10.6 Implement `CourtDefaultsService`
     - GetDefaults: load from CourtDefaultsPersistencePort by ownerId, return defaults or empty/default values for unset fields
     - UpdateDefaults: validate cancellation tiers using the same rules as Requirement 19 (refund percentages must decrease as threshold hours decrease, refund percent 0–100, threshold hours positive), upsert defaults via CourtDefaultsPersistencePort, log audit entry with action COURT_DEFAULTS_UPDATED
     - Cancellation tier validation: reuse the same ordering validation logic from `CancellationService` (Req 19.4) — for any set of tiers, fewer threshold hours must not have higher refund percent
     - _Requirements: 25.1, 25.2, 25.3, 25.4, 25.5_
 
 
-- [ ] 11. Application layer — bulk, dashboard, reminders, and notifications
-  - [ ] 11.1 Implement `BulkCourtOperationsService`
+- [x] 11. Application layer — bulk, dashboard, reminders, and notifications
+  - [x] 11.1 Implement `BulkCourtOperationsService`
     - BulkUpdatePricing: validate ownership of ALL courts, validate max 50 courts, apply pricing rules atomically, publish individual PRICING_UPDATED events per court, log individual audit entries
     - BulkUpdateAvailabilityWindows: validate ownership of ALL courts, validate max 50 courts, apply windows atomically, publish individual AVAILABILITY_UPDATED events per court, log individual audit entries, invalidate cache per court
     - _Requirements: 35.1–35.6_
-  - [ ] 11.2 Implement `DashboardService`
+  - [x] 11.2 Implement `DashboardService`
     - GetDashboard: check DashboardCachePort, on miss compute summary (totalCourts, visibleCourts, hiddenCourts, verificationStatus, stripeConnectStatus), compute pendingActions (VERIFICATION_REQUIRED, STRIPE_CONNECT_REQUIRED, HIDDEN_COURTS), set todaysBookings/revenueThisMonth/occupancyRate to null, cache with 1-min TTL
     - _Requirements: 40.1–40.5_
-  - [ ] 11.3 Implement `ReminderRuleService`
+  - [x] 11.3 Implement `ReminderRuleService`
     - Create: validate rule type fields (Req 38.5), check no duplicate ruleType+courtId, save rule
     - GetRules: load by ownerId with optional courtId/ruleType filter
     - Update: validate ownership, apply changes
     - Delete: validate ownership, remove rule
     - SetEnabled: validate ownership, toggle enabled flag
     - _Requirements: 38.1–38.7_
-  - [ ] 11.4 Implement `NotificationPreferencesService`
+  - [x] 11.4 Implement `NotificationPreferencesService`
     - GetPreferences: load by ownerId, apply defaults (all channels enabled) for unconfigured event types
     - UpdatePreferences: validate at least one channel per event type, upsert preferences
     - Valid event types: VERIFICATION_SUBMITTED, VERIFICATION_APPROVED, VERIFICATION_REJECTED, VERIFICATION_SLA_REMINDER, HOLIDAY_GENERATION_COMPLETED, BOOKING_CANCELLED_BY_HOLIDAY
@@ -575,11 +575,11 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - **Validates: Requirements 13.9**
 
 
-- [ ] 13. Checkpoint — Domain and application layers compile and all tests pass
+- [x] 13. Checkpoint — Domain and application layers compile and all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 14. Persistence adapters — JPA entities, repositories, MapStruct mappers, and adapter classes
-  - [ ] 14.1 Create JPA entities in `gr.courtbooking.platform.adapter.out.persistence.entity`
+- [x] 14. Persistence adapters — JPA entities, repositories, MapStruct mappers, and adapter classes
+  - [x] 14.1 Create JPA entities in `gr.courtbooking.platform.adapter.out.persistence.entity`
     - `CourtJpaEntity`: maps to `platform.courts` table, @Version for optimistic locking, PostGIS `Point` for location column, `image_urls` as text array, `amenities` as text array
     - `AvailabilityWindowJpaEntity`: maps to `platform.availability_windows`, FK to courts
     - `AvailabilityOverrideJpaEntity`: maps to `platform.availability_overrides`, FK to courts, nullable startTime/endTime for full-day blocks
@@ -596,7 +596,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - `ReminderRuleJpaEntity`: maps to `platform.reminder_rules`, FK to users, nullable court_id
     - `NotificationPreferenceJpaEntity`: maps to `platform.court_owner_notification_preferences`, FK to users
     - _Requirements: 1.1, 6.2, 7.1, 8.1, 10.4, 17.1, 18.1, 19.1, 22.1, 23.1, 24.1, 25.1, 27.1, 37.1, 38.1_
-  - [ ] 14.2 Create Spring Data JPA repositories
+  - [x] 14.2 Create Spring Data JPA repositories
     - `CourtRepository`: findByOwnerId, findById, searchByLocationWithin (native PostGIS query with ST_DWithin), searchByBounds (ST_MakeEnvelope), countByOwnerId
     - `AvailabilityWindowRepository`: findByCourtId, deleteByCourtId
     - `AvailabilityOverrideRepository`: findByCourtIdAndDateBetween, findByCourtIdAndDate, deleteByCourtId
@@ -614,7 +614,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - `NotificationPreferenceRepository`: findByCourtOwnerId
     - Package: `gr.courtbooking.platform.adapter.out.persistence.repository`
     - _Requirements: 1–41_
-  - [ ] 14.3 Create MapStruct persistence mappers
+  - [x] 14.3 Create MapStruct persistence mappers
     - `CourtPersistenceMapper`: domain Court ↔ CourtJpaEntity (handle GeoLocation ↔ PostGIS Point, Set<Amenity> ↔ String[], List<String> imageUrls ↔ String[])
     - `AvailabilityWindowPersistenceMapper`: domain AvailabilityWindow ↔ AvailabilityWindowJpaEntity
     - `AvailabilityOverridePersistenceMapper`: domain AvailabilityOverride ↔ AvailabilityOverrideJpaEntity
@@ -631,7 +631,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - `FavoritePersistenceMapper`: domain FavoriteCourt ↔ FavoriteJpaEntity + CourtJpaEntity
     - Package: `gr.courtbooking.platform.adapter.out.persistence.mapper`
     - _Requirements: 1–41_
-  - [ ] 14.4 Create persistence adapter classes implementing outgoing ports
+  - [x] 14.4 Create persistence adapter classes implementing outgoing ports
     - `CourtPersistenceAdapter` implements `LoadCourtPort`, `SaveCourtPort` — includes PostGIS native queries for geospatial search
     - `AvailabilityPersistenceAdapter` implements `LoadAvailabilityPort`, `SaveAvailabilityPort`
     - `HolidayPersistenceAdapter` implements `HolidayPersistencePort`
@@ -663,26 +663,26 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - _Requirements: 1–41_
 
 
-- [ ] 15. Redis adapters
-  - [ ] 15.1 Implement `AvailabilityCacheRedisAdapter` implementing `AvailabilityCachePort`
+- [x] 15. Redis adapters
+  - [x] 15.1 Implement `AvailabilityCacheRedisAdapter` implementing `AvailabilityCachePort`
     - Cache key pattern: `availability:{courtId}:{date}:{durationMinutes}`
     - TTL: 5 minutes
     - Operations: get, put, invalidate (single date), invalidateAllForCourt (wildcard `availability:{courtId}:*`)
     - Graceful degradation: catch Redis exceptions, log WARN, return empty Optional on get failure
     - _Requirements: 20.1, 20.2, 20.7, 20.9_
-  - [ ] 15.2 Implement `WeatherCacheRedisAdapter` implementing `WeatherCachePort`
+  - [x] 15.2 Implement `WeatherCacheRedisAdapter` implementing `WeatherCachePort`
     - Cache key pattern: `weather:{lat_2dp}:{lng_2dp}:{date}:{hour}` — coordinates rounded to 2 decimal places, time rounded to nearest hour
     - TTL: 10 minutes (configurable)
     - Graceful degradation on Redis unavailability
     - _Requirements: 21.4, 21.5_
-  - [ ] 15.3 Implement `DashboardCacheRedisAdapter` implementing `DashboardCachePort`
+  - [x] 15.3 Implement `DashboardCacheRedisAdapter` implementing `DashboardCachePort`
     - Cache key pattern: `dashboard:{courtOwnerId}`
     - TTL: 1 minute
     - Operations: get, put, invalidate
     - _Requirements: 40.5_
 
-- [ ] 16. External service adapters
-  - [ ] 16.1 Implement `DigitalOceanSpacesAdapter` implementing `ImageStoragePort`
+- [x] 16. External service adapters
+  - [x] 16.1 Implement `DigitalOceanSpacesAdapter` implementing `ImageStoragePort`
     - Use S3-compatible API (AWS SDK) to interact with DigitalOcean Spaces
     - Upload: strip EXIF metadata using ImageIO/metadata-extractor, store under `courts/{courtId}/{uuid}.{extension}`, return CDN URL
     - Verification documents: store under `verification/{courtOwnerId}/{uuid}.{extension}`
@@ -691,7 +691,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - Wrap S3 errors in `StorageServiceUnavailableException`
     - Package: `gr.courtbooking.platform.adapter.out.spaces`
     - _Requirements: 4.1–4.9, 17.2_
-  - [ ] 16.2 Implement `OpenWeatherMapAdapter` implementing `WeatherApiPort`
+  - [x] 16.2 Implement `OpenWeatherMapAdapter` implementing `WeatherApiPort`
     - Use Spring RestClient to call `/data/2.5/forecast` endpoint
     - Parse response to extract temperature, feelsLike, humidity, windSpeed, precipitationProbability, weatherCondition, weatherIcon
     - Determine WeatherRecommendation based on conditions (OUTDOOR_IDEAL/OUTDOOR_OK/INDOOR_RECOMMENDED)
@@ -701,21 +701,21 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - Package: `gr.courtbooking.platform.adapter.out.weather`
     - _Requirements: 21.1–21.9_
 
-- [ ] 17. Kafka adapters
-  - [ ] 17.1 Implement `CourtEventKafkaPublisher` implementing `CourtEventPublisherPort`
+- [x] 17. Kafka adapters
+  - [x] 17.1 Implement `CourtEventKafkaPublisher` implementing `CourtEventPublisherPort`
     - Publish to `court-update-events` topic with courtId as partition key (courtOwnerId for STRIPE_CONNECT_STATUS_CHANGED)
     - Event types: COURT_UPDATED, PRICING_UPDATED, AVAILABILITY_UPDATED, CANCELLATION_POLICY_UPDATED, COURT_DELETED, STRIPE_CONNECT_STATUS_CHANGED
     - Standard event envelope: eventId, eventType, timestamp, courtId, version, payload
     - Non-blocking: catch Kafka exceptions, log ERROR, do not fail triggering operation
     - Package: `gr.courtbooking.platform.adapter.out.kafka`
     - _Requirements: 26.1–26.9_
-  - [ ] 17.2 Implement `NotificationEventKafkaPublisher` implementing `NotificationEventPublisherPort`
+  - [x] 17.2 Implement `NotificationEventKafkaPublisher` implementing `NotificationEventPublisherPort`
     - Publish to `notification-events` topic with userId as partition key
     - Event type: NOTIFICATION_REQUESTED with notificationType, recipientUserId, title, body, language, channels, data
     - Check notification channel preferences before publishing (include enabled channels in payload)
     - Non-blocking: catch Kafka exceptions, log ERROR, do not fail triggering operation
     - _Requirements: 32.1–32.5_
-  - [ ] 17.3 Implement `BookingEventKafkaConsumer`
+  - [x] 17.3 Implement `BookingEventKafkaConsumer`
     - Consume from `booking-events` topic with consumer group `platform-service-booking-consumer`
     - Handle event types: BOOKING_CREATED, BOOKING_CONFIRMED, BOOKING_CANCELLED, BOOKING_MODIFIED
     - On each event: invalidate availability cache for affected court+date (wildcard `availability:{courtId}:{date}:*`)
@@ -724,19 +724,19 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - Config: `auto.offset.reset=latest`
     - Package: `gr.courtbooking.platform.adapter.in.kafka`
     - _Requirements: 28.1–28.6_
-  - [ ] 17.4 Implement `StripeConnectStatusChangedEventPublisher` (infrastructure for Req 41)
+  - [x] 17.4 Implement `StripeConnectStatusChangedEventPublisher` (infrastructure for Req 41)
     - Define event schema for STRIPE_CONNECT_STATUS_CHANGED: userId, previousStatus, newStatus, stripeConnectAccountId, timestamp
     - Partition key: courtOwnerId (to maintain ordering with other court-related events)
     - Log all status changes to court_owner_audit_logs with action STRIPE_CONNECT_STATUS_CHANGED
     - Note: Actual triggering via Stripe webhook is Phase 4; Phase 3 establishes the publishing infrastructure
     - _Requirements: 41.1–41.4_
 
-- [ ] 18. Checkpoint — All adapters compile and adapter tests pass
+- [x] 18. Checkpoint — All adapters compile and adapter tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 
-- [ ] 19. Web adapters — controllers, DTOs, and MapStruct web mappers
-  - [ ] 19.1 Create web DTOs as Java records in `gr.courtbooking.platform.adapter.in.web.dto`
+- [x] 19. Web adapters — controllers, DTOs, and MapStruct web mappers
+  - [x] 19.1 Create web DTOs as Java records in `gr.courtbooking.platform.adapter.in.web.dto`
     - Court request DTOs: `CreateCourtRequest`, `UpdateCourtRequest`, `UpdateVisibilityRequest`, `UpdateConfirmationModeRequest`, `UpdateWaitlistConfigRequest`
     - Court response DTOs: `CourtResponse`, `CourtSummaryResponse`, `CourtMapMarkerResponse`, `CourtDetailResponse`, `CourtOwnerCourtResponse`
     - Image DTOs: `ReorderImagesRequest`, `ImageUploadResponse`
@@ -759,7 +759,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - Use Bean Validation annotations (@NotNull, @NotBlank, @Size, @Min, @Max) on request DTOs
     - API contract rules: `averageRating` as `null` and `totalReviews` as `0` in all court response DTOs until Phase 10 (Req 29.2); all paginated responses use consistent format `{ items: [...], totalCount, page, size }` (Req 29.3); all monetary amounts (basePriceCents, effectivePriceCents) represented as euro cents integers (Req 29.5)
     - _Requirements: 1–41, 29.1–29.6_
-  - [ ] 19.2 Create MapStruct web mappers
+  - [x] 19.2 Create MapStruct web mappers
     - `CourtWebMapper`: domain Court → CourtResponse/CourtSummaryResponse/CourtMapMarkerResponse/CourtDetailResponse/CourtOwnerCourtResponse
     - `AvailabilityWebMapper`: domain AvailabilityWindow/Override/Result → response DTOs
     - `HolidayWebMapper`: domain HolidayTemplate/CalendarResult → response DTOs
@@ -772,14 +772,14 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - `ReminderRuleWebMapper`: domain ReminderRule → ReminderRuleResponse
     - Package: `gr.courtbooking.platform.adapter.in.web.mapper`
     - _Requirements: 1–41_
-  - [ ] 19.3 Implement `LocaleResolverInterceptor` for bilingual response support
+  - [x] 19.3 Implement `LocaleResolverInterceptor` for bilingual response support
     - Create a Spring `HandlerInterceptor` or `Filter` that reads the `Accept-Language` header (or authenticated user's language preference) and stores the resolved locale (`el` or `en`) in a `ThreadLocal` / `RequestContextHolder`
     - Default to Greek (`el`) when no `Accept-Language` header is present
     - MapStruct web mappers use the resolved locale to select `nameEl`/`nameEn`, `descriptionEl`/`descriptionEn` fields — when locale is `en`, populate `name` from `nameEn` and `description` from `descriptionEn`; otherwise use `nameEl`/`descriptionEl`
     - Apply to all response DTOs that have bilingual fields: `CourtResponse`, `CourtSummaryResponse`, `CourtDetailResponse`, `CourtOwnerCourtResponse`, `NationalHolidayResponse`, `CustomHolidayResponse`
     - Register the interceptor in `WebMvcConfigurer`
     - _Requirements: 29.6_
-  - [ ] 19.4 Implement `CourtController`
+  - [x] 19.4 Implement `CourtController`
     - `POST /api/courts` → createCourt (COURT_OWNER)
     - `PUT /api/courts/{courtId}` → updateCourt (COURT_OWNER)
     - `DELETE /api/courts/{courtId}` → deleteCourt (COURT_OWNER)
@@ -792,12 +792,12 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - `DELETE /api/courts/{courtId}/images/{imageId}` → deleteImage (COURT_OWNER)
     - `PUT /api/courts/{courtId}/images/order` → reorderImages (COURT_OWNER)
     - _Requirements: 1.1, 2.1, 3.1, 4.1, 4.7, 4.8, 15.1, 16.1, 33.1, 2.9, 2.10, 39.6_
-  - [ ] 19.5 Implement `CourtSearchController`
+  - [x] 19.5 Implement `CourtSearchController`
     - `GET /api/courts` → searchCourts (public/authenticated) — geospatial search with filters, pagination, sorting
     - `GET /api/courts/map` → getMapData (public/authenticated) — aggregated map endpoint
     - All search responses: `averageRating` as `null` and `totalReviews` as `0` until Phase 10 (Req 29.2); all monetary amounts (basePriceCents, effectivePriceCents) in euro cents as integers (Req 29.5); consistent pagination format `{ items: [...], totalCount, page, size }` (Req 29.3)
     - _Requirements: 13.1–13.12, 14.1–14.4, 29.2, 29.3, 29.5_
-  - [ ] 19.6 Implement `AvailabilityController`
+  - [x] 19.6 Implement `AvailabilityController`
     - `GET /api/courts/{courtId}/availability/windows` → getWindows (COURT_OWNER)
     - `PUT /api/courts/{courtId}/availability/windows` → updateWindows (COURT_OWNER)
     - `POST /api/courts/{courtId}/availability/overrides` → createOverride (COURT_OWNER)
@@ -805,7 +805,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - `DELETE /api/courts/{courtId}/availability/overrides/{overrideId}` → deleteOverride (COURT_OWNER)
     - `GET /api/courts/{courtId}/availability` → getAvailability (public/authenticated)
     - _Requirements: 6.1–6.7, 7.1–7.8, 20.2_
-  - [ ] 19.7 Implement `HolidayController`
+  - [x] 19.7 Implement `HolidayController`
     - `GET /api/holidays/national` → getNationalHolidays (public, no auth)
     - `POST /api/holidays/custom` → createCustomHoliday (COURT_OWNER)
     - `GET /api/holidays/custom` → getCustomHolidays (COURT_OWNER)
@@ -816,74 +816,74 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - `GET /api/courts/{courtId}/holidays` → getCourtHolidays (COURT_OWNER)
     - `DELETE /api/courts/{courtId}/holidays/{holidayId}` → removeCourtHoliday (COURT_OWNER)
     - _Requirements: 8.4, 9.1–9.7, 10.1–10.11, 12.1–12.6_
-  - [ ] 19.8 Implement `VerificationController`
+  - [x] 19.8 Implement `VerificationController`
     - `POST /api/verification/submit` → submitVerification (COURT_OWNER, multipart)
     - `GET /api/verification/status` → getVerificationStatus (COURT_OWNER) — returns current verification status for authenticated court owner
     - `DELETE /api/verification/documents/{documentId}` → deleteDocument (COURT_OWNER)
     - _Requirements: 17.1, 17.12_
-  - [ ] 19.9 Implement `AdminVerificationController`
+  - [x] 19.9 Implement `AdminVerificationController`
     - `GET /api/admin/verifications` → getPendingVerifications (PLATFORM_ADMIN, paginated)
     - `POST /api/admin/verifications/{requestId}/approve` → approveVerification (PLATFORM_ADMIN)
     - `POST /api/admin/verifications/{requestId}/reject` → rejectVerification (PLATFORM_ADMIN)
     - _Requirements: 17.4, 17.5, 17.7, 17.11_
-  - [ ] 19.10 Implement `PricingController`
+  - [x] 19.10 Implement `PricingController`
     - `GET /api/courts/{courtId}/pricing-rules` → getPricingRules (COURT_OWNER)
     - `PUT /api/courts/{courtId}/pricing-rules` → updatePricingRules (COURT_OWNER)
     - _Requirements: 18.4, 18.5_
-  - [ ] 19.11 Implement `CancellationController`
+  - [x] 19.11 Implement `CancellationController`
     - `GET /api/courts/{courtId}/cancellation-tiers` → getCancellationTiers (COURT_OWNER)
     - `PUT /api/courts/{courtId}/cancellation-tiers` → updateCancellationTiers (COURT_OWNER)
     - _Requirements: 19.1, 19.5_
-  - [ ] 19.12 Implement `WeatherController`
+  - [x] 19.12 Implement `WeatherController`
     - `GET /api/weather` → getWeatherForecast (public, no auth)
     - Query params: latitude, longitude, date, time
     - _Requirements: 21.2_
-  - [ ] 19.13 Implement `FavoritesController`
+  - [x] 19.13 Implement `FavoritesController`
     - `POST /api/favorites/{courtId}` → addFavorite (CUSTOMER/COURT_OWNER)
     - `DELETE /api/favorites/{courtId}` → removeFavorite (CUSTOMER/COURT_OWNER)
     - `GET /api/favorites` → getFavorites (CUSTOMER/COURT_OWNER)
     - _Requirements: 22.1–22.6_
-  - [ ] 19.14 Implement `PreferencesController`
+  - [x] 19.14 Implement `PreferencesController`
     - `GET /api/preferences` → getPreferences (CUSTOMER/COURT_OWNER)
     - `PUT /api/preferences` → updatePreferences (CUSTOMER/COURT_OWNER)
     - _Requirements: 23.1–23.8_
-  - [ ] 19.15 Implement `SkillLevelController`
+  - [x] 19.15 Implement `SkillLevelController`
     - `GET /api/skill-levels` → getSkillLevels (CUSTOMER/COURT_OWNER)
     - `PUT /api/skill-levels` → updateSkillLevels (CUSTOMER/COURT_OWNER)
     - _Requirements: 24.1–24.5_
-  - [ ] 19.16 Implement `CourtDefaultsController`
+  - [x] 19.16 Implement `CourtDefaultsController`
     - `GET /api/court-defaults` → getCourtDefaults (COURT_OWNER)
     - `PUT /api/court-defaults` → updateCourtDefaults (COURT_OWNER)
     - _Requirements: 25.1–25.5_
-  - [ ] 19.17 Implement `AuditLogController`
+  - [x] 19.17 Implement `AuditLogController`
     - `GET /api/audit-logs` → getAuditLogs (COURT_OWNER, paginated with filters)
     - _Requirements: 27.4, 27.5_
-  - [ ] 19.18 Implement `DashboardController`
+  - [x] 19.18 Implement `DashboardController`
     - `GET /api/dashboard` → getDashboard (COURT_OWNER)
     - _Requirements: 40.1–40.5_
-  - [ ] 19.19 Implement `BulkCourtController`
+  - [x] 19.19 Implement `BulkCourtController`
     - `PUT /api/courts/bulk/pricing` → bulkUpdatePricing (COURT_OWNER)
     - `PUT /api/courts/bulk/availability-windows` → bulkUpdateAvailabilityWindows (COURT_OWNER)
     - _Requirements: 35.1–35.6_
-  - [ ] 19.20 Implement `NotificationPreferencesController`
+  - [x] 19.20 Implement `NotificationPreferencesController`
     - `GET /api/notification-preferences` → getNotificationPreferences (COURT_OWNER)
     - `PUT /api/notification-preferences` → updateNotificationPreferences (COURT_OWNER)
     - _Requirements: 37.1–37.6_
-  - [ ] 19.21 Implement `ReminderRulesController`
+  - [x] 19.21 Implement `ReminderRulesController`
     - `POST /api/reminder-rules` → createRule (COURT_OWNER)
     - `GET /api/reminder-rules` → getRules (COURT_OWNER)
     - `PUT /api/reminder-rules/{ruleId}` → updateRule (COURT_OWNER)
     - `DELETE /api/reminder-rules/{ruleId}` → deleteRule (COURT_OWNER)
     - `PUT /api/reminder-rules/{ruleId}/enabled` → setEnabled (COURT_OWNER)
     - _Requirements: 38.1–38.7_
-  - [ ] 19.22 Implement `InternalCourtController`
+  - [x] 19.22 Implement `InternalCourtController`
     - `GET /internal/courts/{courtId}/validate-slot` → validateSlot (internal, API key auth)
     - `GET /internal/courts/{courtId}/calculate-price` → calculatePrice (internal, API key auth, fully functional)
     - _Requirements: 31.1–31.4_
-  - [ ] 19.23 Implement `InternalUserController`
+  - [x] 19.23 Implement `InternalUserController`
     - `GET /internal/users/{userId}/stripe-connect-status` → getStripeConnectStatus (internal, API key auth)
     - _Requirements: 39.4_
-  - [ ] 19.24 Update `GlobalExceptionHandler` for Phase 3 exceptions
+  - [x] 19.24 Update `GlobalExceptionHandler` for Phase 3 exceptions
     - Map `CourtManagementException` subclasses to HTTP status codes and structured error responses
     - Include traceId (UUID), timestamp, path in all error responses
     - Implement localized error messages: use the resolved locale from `LocaleResolverInterceptor` (Req 29.6) to return error messages in the user's preferred language, defaulting to English when no locale is available (Req 36.5)
@@ -896,8 +896,8 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - _Requirements: 36.1–36.5, 29.6_
 
 
-- [ ] 20. Security configuration updates
-  - [ ] 20.1 Update `SecurityConfig` for Phase 3 endpoints
+- [x] 20. Security configuration updates
+  - [x] 20.1 Update `SecurityConfig` for Phase 3 endpoints
     - Public (no auth): `GET /api/holidays/national`, `GET /api/weather`, `GET /api/courts` (search), `GET /api/courts/map`, `GET /api/courts/{id}` (detail), `GET /api/courts/{id}/availability`
     - Customer/Court Owner (authenticated): `POST/DELETE /api/favorites/*`, `GET /api/favorites`, `GET/PUT /api/preferences`, `GET/PUT /api/skill-levels`
     - Court Owner only: `POST/PUT/DELETE /api/courts` (CRUD), `PUT /api/courts/{id}/visibility`, `PUT /api/courts/{id}/confirmation-mode`, `PUT /api/courts/{id}/waitlist-config`, `POST/DELETE /api/courts/{id}/images`, `PUT /api/courts/{id}/images/order`, `GET/PUT /api/courts/{id}/availability/windows`, `POST/GET/DELETE /api/courts/{id}/availability/overrides`, `GET /api/courts/mine`, `POST/GET/PUT/DELETE /api/holidays/custom/*`, `POST /api/holidays/apply`, `GET /api/holidays/calendar`, `GET/DELETE /api/courts/{id}/holidays/*`, `POST /api/verification/submit`, `GET /api/verification/status`, `DELETE /api/verification/documents/*`, `GET/PUT /api/courts/{id}/pricing-rules`, `GET/PUT /api/courts/{id}/cancellation-tiers`, `GET/PUT /api/court-defaults`, `GET /api/audit-logs`, `GET /api/dashboard`, `PUT /api/courts/bulk/*`, `GET/PUT /api/notification-preferences`, `POST/GET/PUT/DELETE /api/reminder-rules/*`
@@ -905,22 +905,22 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - Internal (API key): `GET /internal/courts/*`, `GET /internal/users/*`
     - _Requirements: 6.1, 31.3, 31.4_
 
-- [ ] 21. Scheduled jobs
-  - [ ] 21.1 Implement `RecurringHolidayGenerationJob`
+- [x] 21. Scheduled jobs
+  - [x] 21.1 Implement `RecurringHolidayGenerationJob`
     - Spring `@Scheduled` with configurable cron (default: `0 0 2 1 1 *` — Jan 1 at 02:00)
     - Load active `court_holiday_subscriptions` with `auto_renew = true`
     - For each subscription: calculate holiday dates for the new year using OrthodoxEasterCalculator, create `availability_overrides` entries
     - Publish `NOTIFICATION_REQUESTED` events to notify court owners with summary of generated dates
     - Check court owner's `notifyHolidayGeneration` preference before publishing
     - _Requirements: 11.1–11.7_
-  - [ ] 21.2 Implement `VerificationSlaReminderJob`
+  - [x] 21.2 Implement `VerificationSlaReminderJob`
     - Spring `@Scheduled` with hourly cron (default: `0 0 * * * *`)
     - Query `verification_requests` with status `PENDING_REVIEW` and `submitted_at` older than 48 hours
     - Publish `NOTIFICATION_REQUESTED` events to notify PLATFORM_ADMIN users
     - _Requirements: 17.8_
 
-- [ ] 22. Application configuration
-  - [ ] 22.1 Update `application.yml` for Phase 3 configuration
+- [x] 22. Application configuration
+  - [x] 22.1 Update `application.yml` for Phase 3 configuration
     - DigitalOcean Spaces: endpoint, region, bucket, CDN endpoint, access-key, secret-key (from env vars)
     - OpenWeatherMap: api-key (from env var), base-url, rate-limit (60/min), cache-ttl (10m)
     - Kafka topics: `court-update-events` (publish), `notification-events` (publish), `booking-events` (consume with consumer group `platform-service-booking-consumer`, auto.offset.reset=latest)
@@ -929,41 +929,41 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - Hibernate Spatial dialect for PostGIS support
     - _Requirements: 20.1, 21.4, 21.8, 26.1, 28.1, 28.5, 40.5_
 
-- [ ] 23. Integration tests
-  - [ ]* 23.1 Write integration tests for court CRUD flow (@SpringBootTest + Testcontainers)
+- [-] 23. Integration tests
+  - [ ] 23.1 Write integration tests for court CRUD flow (@SpringBootTest + Testcontainers)
     - Create court → retrieve → update → delete flow with PostGIS, Redis cache, Kafka events
     - Verify optimistic locking, audit logging, Kafka event publishing
     - Use Testcontainers: PostGIS, Redis, Kafka
     - _Requirements: 1.1, 2.1, 3.1, 26.1_
-  - [ ]* 23.2 Write integration tests for availability and holiday flow
+  - [ ] 23.2 Write integration tests for availability and holiday flow
     - Create availability windows → create overrides → compute availability → verify cache behavior
     - Apply holidays → verify overrides created → verify cache invalidation
     - Apply holidays with PENDING_CONFIRMATION booking conflict → verify rejection (Req 10.10)
     - Update holiday template → verify prompt for future vs existing instances (Req 11.5)
     - Manually edit holiday-generated override → verify source changes to MANUAL (Req 11.7)
     - _Requirements: 6.1, 7.1, 8.1, 10.1, 10.10, 11.5, 11.7, 20.1_
-  - [ ]* 23.3 Write integration tests for verification workflow
+  - [ ] 23.3 Write integration tests for verification workflow
     - Submit verification → admin approve → verify courts become visible
     - Submit verification → admin reject → re-submit with previousRequestId
     - _Requirements: 17.1, 17.4, 17.5, 17.6_
-  - [ ]* 23.4 Write integration tests for weather service with WireMock
+  - [x] 23.4 Write integration tests for weather service with WireMock
     - Stub OpenWeatherMap API → verify forecast retrieval → verify caching → verify graceful degradation on API failure
     - _Requirements: 21.1, 21.7_
-  - [ ]* 23.5 Write integration tests for Kafka consumer (booking events)
+  - [x] 23.5 Write integration tests for Kafka consumer (booking events)
     - Publish booking event to `booking-events` topic → verify availability cache invalidated
     - Test malformed event handling (logged and skipped)
     - _Requirements: 28.1–28.6_
-  - [ ]* 23.6 Write integration tests for geospatial search
+  - [ ] 23.6 Write integration tests for geospatial search
     - Create courts at known coordinates → search by radius → verify distance calculations and filtering
     - Search by map bounds → verify bounding box filtering
     - _Requirements: 13.1–13.8_
-  - [ ]* 23.7 Write integration tests for Stripe Connect status infrastructure
+  - [x] 23.7 Write integration tests for Stripe Connect status infrastructure
     - Verify STRIPE_CONNECT_STATUS_CHANGED event schema and publishing infrastructure
     - Verify internal endpoint `/internal/users/{userId}/stripe-connect-status` returns correct status
     - Verify court visibility blocked when stripeConnectStatus is not ACTIVE
     - _Requirements: 39.1–39.6, 41.1–41.4_
 
-- [ ] 24. Final checkpoint — All tests pass, full compilation succeeds
+- [x] 24. Final checkpoint — All tests pass, full compilation succeeds
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
