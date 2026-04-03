@@ -294,7 +294,7 @@ Implements the complete court management subsystem for the Court Booking Platfor
     - Delete: validate ownership, remove from Spaces via ImageStoragePort, update court imageUrls
     - Reorder: validate ownership, validate provided URLs match existing, update court imageUrls order
     - _Requirements: 4.1–4.9_
-  - [] 7.3 Implement `UpdateCourtVisibilityService`
+  - [x] 7.3 Implement `UpdateCourtVisibilityService`
     - Validate ownership, check owner verified status and stripeConnectStatus, update visible field, log audit, publish COURT_UPDATED event
     - Reject visible=true for unverified owners or non-ACTIVE Stripe Connect
     - _Requirements: 33.1–33.5, 39.2_
