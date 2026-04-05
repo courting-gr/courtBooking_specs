@@ -1,0 +1,781 @@
+# Implementation Plan: Phase 4 — Booking & Payments
+
+## Overview
+
+Implements the complete booking and payment subsystem for the Court Booking Platform within `court-booking-transaction-service`. Tasks follow hexagonal architecture (domain → application ports → adapters), Buckpal-style rich entities with `withId()` reconstitution, self-validating command records, MapStruct boundary mappers, and jqwik property-based testing. All code targets Java 25 / Spring Boot 4.x / Gradle. This phase delivers customer booking creation with atomic conflict prevention (Redis slot hold + DB locking), Stripe Connect onboarding, payment processing with PaymentIntent authorize/capture/refund, manual booking creation, pending confirmation workflow with Quartz timeout, recurring bookings (weekly pattern), booking modification and cancellation with tiered refund policy, no-show flagging, external payment tracking, bulk booking operations, iCal export, Kafka publishing to `booking-events` and `notification-events` topics, Kafka consumption from `court-update-events` topic, Stripe webhook handling, cross-schema views for court/user lookups, idempotency key support, and 7 Quartz scheduled jobs.
+
+## Tasks
+
+- [-] 1. Domain layer — enums, value objects, and domain services
+  - [-] 1.1 Create domain enums in `gr.courtbooking.transaction.domain.model`
+    - `BookingStatus`: PENDING_CONFIRMATION, CONFIRMED, CANCELLED, COMPLETED, REJECTED
+    - `BookingType`: CUSTOMER, MANUAL
+    - `PaymentStatus`: NOT_REQUIRED, PENDING, AUTHORIZED, CAPTURED, REFUNDED, PARTIALLY_REFUNDED, FAILED, PAID_EXTERNALLY, DISPUTED
+    - `ConfirmationMode`: INSTANT, MANUAL
+    - _Requirements: 24.1, 25.1_
+  - [~] 1.2 Create value object records with compact constructor validation
+    - `BookingId(UUID value)` — null check
+    - `PaymentId(UUID value)` — null check
+    - `BookingSlot(CourtId courtId, LocalDate date, LocalTime startTime, LocalTime endTime, int durationMinutes)` — validate endTime after startTime, positive duration
+    - `RecurringPattern(DayOfWeek dayOfWeek, LocalTime startTime, LocalTime endTime, LocalDate startDate, LocalDate endDate, int weeksAhead)` — validate weeksAhead 2-12
+    - `CourtSummary(CourtId courtId, UserId ownerId, String nameEl, String nameEn, String courtType, String locationType, String address, ZoneId timezone, int basePriceCents, int durationMinutes, int maxCapacity, ConfirmationMode confirmationMode, int confirmationTimeoutHours, boolean waitlistEnabled, int version)`
+    - `UserBasic(UserId userId, String email, String name, String phone, String role, String language, String stripeConnectAccountId, String stripeConnectStatus, String stripeCustomerId, boolean vatRegistered, String vatNumber, String status)`
+    - `CancellationTierView(CourtId courtId, int thresholdHours, int refundPercent, int sortOrder)`
+    - `CancellationRefund(int refundAmountCents, int refundPercent, int platformFeeRetainedCents)`
+    - `BookingModificationResult` record with previous/new date, time, amounts, paymentIntentClientSecret, refundStatus
+    - `ReceiptResult` record with booking details, payment info, VAT fields (vatIncluded, vatNumber, vatAmountCents), and static `calculateGreekVat(int grossAmountCents)` method
+    - _Requirements: 2.1, 5.13, 5.19, 7.1, 9.1, 9.6, 20.1, 20.2, 20.3_
+  - [~] 1.3 Create `PlatformFeeCalculator` domain service
+    - Package: `gr.courtbooking.transaction.domain.service`
+    - Static `calculate(int totalAmountCents)` method: 10% of total, rounded HALF_UP
+    - Pure domain service — no framework dependencies
+    - Invariant: `platformFee + courtOwnerNet = totalAmount`
+    - _Requirements: 6.1, 6.2, 6.3, 6.7_
+  - [~] 1.4 Create `CancellationRefundCalculator` domain service
+    - Static `calculateCustomerCancellation(Booking, List<CancellationTierView>, ZoneId)` — platform fee non-refundable, refund = courtOwnerNetCents × refundPercent / 100
+    - Static `calculateOwnerCancellation(Booking)` — full refund of totalAmountCents including platform fee
+    - Default tiers when none configured: 24h→100%, 12h→50%, 0h→0%
+    - `determineRefundPercent` — first tier (ordered by thresholdHours desc) where hoursUntilBooking >= thresholdHours
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.12_
+
+  - [~] 1.5 Create exception hierarchy in `gr.courtbooking.transaction.domain.exception`
+    - Base: `BookingException extends RuntimeException` with errorCode and details map
+    - Validation (400): `CapacityExceededException`, `InvalidStatusTransitionException`, `BatchSizeExceededException`, `BookingNotPendingException`, `InvalidPayoutAnchorException`
+    - Payment (402): `PaymentFailedException`
+    - Authorization (403): `InsufficientRoleException`, `NotCourtOwnerException`
+    - Not Found (404): `BookingNotFoundException`, `PaymentNotFoundException`
+    - Conflict (409): `TimeSlotUnavailableException` (with alternativeSlots field), `AllDatesUnavailableException`
+    - Business Logic (422): `StripeConnectNotActiveException`, `BookingWindowExceededException`, `MinimumNoticeNotMetException`, `ModificationNotAllowedException`, `NoShowWindowExpiredException`, `NotManualBookingException`, `NoActiveDisputeException`, `ConfirmationTimeoutExceedsStripeHoldException`, `InvalidPaymentStatusTransitionException`
+    - _Requirements: 2.1, 2.18, 2.24, 2.25, 7.2, 8.10, 11.1, 12.1, 14.8, 24.2_
+
+
+- [ ] 2. Domain layer — rich entities
+  - [ ] 2.1 Create `Booking` rich domain entity with creation constructor and `withId()` reconstitution factory
+    - Package: `gr.courtbooking.transaction.domain.model`
+    - Fields: id (BookingId), courtId (CourtId), userId (nullable for manual), courtOwnerId, idempotencyKey, date, startTime, endTime, durationMinutes, status (BookingStatus), bookingType, confirmationMode (snapshot), totalAmountCents (nullable for manual), platformFeeCents, courtOwnerNetCents, discountCents, paymentStatus, stripePaymentIntentId, paidExternally, externalPaymentMethod, externalPaymentNotes, noShow, noShowFlaggedAt, customerName, customerPhone, notes, recurringGroupId, recurringPattern, cancelledBy, cancellationReason, cancelledAt, refundAmountCents, confirmedAt, createdAt, updatedAt
+    - Business methods: `confirm(UserId)`, `reject(UserId, String reason)`, `cancel(String cancelledByRole, String reason)`, `complete()`, `modifySlot(LocalDate, LocalTime, LocalTime, int)`, `flagNoShow(String)`, `markPaidExternally(String, String)`
+    - Guard methods: `isModifiable()` (CONFIRMED + CUSTOMER), `isCancellable()` (CONFIRMED or PENDING_CONFIRMATION)
+    - Status assertion: `assertStatus(BookingStatus expected, String action)` throws `InvalidStatusTransitionException`
+    - `modifySlot` recalculates platformFeeCents and courtOwnerNetCents via PlatformFeeCalculator
+    - _Requirements: 2.1, 2.9, 2.10, 2.12, 3.1, 3.3, 3.5, 4.1, 4.2, 4.4, 7.2, 7.7, 8.5, 8.10, 11.1, 11.2, 12.1, 24.1_
+  - [ ] 2.2 Create `Payment` domain entity with creation constructor and `withId()` reconstitution factory
+    - Fields: id (PaymentId), bookingId, userId, amountCents, platformFeeCents, courtOwnerNetCents, currency ("EUR"), status (PaymentStatus), stripePaymentIntentId, stripeChargeId, stripeTransferId, stripeRefundId, paymentMethodType, refundAmountCents, refundReason, refundedAt, failureReason, createdAt, updatedAt
+    - Status transition methods: `authorize()`, `capture()`, `fail(String)`, `refund(int, String)`, `dispute()`
+    - Transition guards: `assertTransition(PaymentStatus expected, PaymentStatus target)` throws `InvalidPaymentStatusTransitionException`
+    - `refund` sets status to REFUNDED if refundAmount >= amountCents, else PARTIALLY_REFUNDED
+    - _Requirements: 5.4, 5.8, 5.9, 5.10, 5.14, 25.1_
+  - [ ] 2.3 Create `BookingAuditLogEntry` domain entity (append-only, no setters)
+    - Fields: id (UUID), bookingId (BookingId), action (String), performedBy (UUID), performedByRole (String), details (Map<String, Object>), createdAt (Instant)
+    - No update methods — enforces append-only invariant at domain level
+    - _Requirements: 23.1, 23.6_
+  - [ ]* 2.4 Write property test for PlatformFeeCalculator invariant
+    - **Property 1: Platform Fee Invariant**
+    - For any totalAmountCents > 0, `PlatformFeeCalculator.calculate(total) + (total - PlatformFeeCalculator.calculate(total)) == total`
+    - Verify fee equals 10% rounded HALF_UP
+    - `@Property(tries = 1000)`, tag: `Feature: phase-4-booking-payments, Property 1: Platform Fee Invariant`
+    - **Validates: Requirements 2.8, 6.1, 6.2, 6.3, 6.7**
+  - [ ]* 2.5 Write property test for Booking status transition validity
+    - **Property 26: Booking Status Transition Validity**
+    - For any booking, only valid transitions allowed: PENDING_CONFIRMATION→CONFIRMED, PENDING_CONFIRMATION→REJECTED, PENDING_CONFIRMATION→CANCELLED, CONFIRMED→CANCELLED, CONFIRMED→COMPLETED. All other transitions throw InvalidStatusTransitionException
+    - `@Property(tries = 500)`, tag: `Feature: phase-4-booking-payments, Property 26: Booking Status Transition Validity`
+    - **Validates: Requirements 24.1**
+  - [ ]* 2.6 Write property test for Payment status transition validity
+    - **Property 27: Payment Status Transition Validity**
+    - For any payment, only valid transitions allowed per state machine. Invalid transitions throw InvalidPaymentStatusTransitionException
+    - `@Property(tries = 500)`, tag: `Feature: phase-4-booking-payments, Property 27: Payment Status Transition Validity`
+    - **Validates: Requirements 25.1**
+  - [ ]* 2.7 Write property test for CancellationRefundCalculator tier selection
+    - **Property 13: Cancellation Tier Selection and Refund Calculation**
+    - For any set of tiers and hoursUntilBooking, refund = courtOwnerNetCents × refundPercent / 100 where refundPercent from first tier (desc by thresholdHours) where hours >= threshold. Platform fee retained. Default tiers: 24h→100%, 12h→50%, 0h→0%
+    - `@Property(tries = 500)`, tag: `Feature: phase-4-booking-payments, Property 13: Cancellation Tier Selection`
+    - **Validates: Requirements 8.1, 8.2, 8.3, 8.12**
+  - [ ]* 2.8 Write property test for Manual Booking invariants
+    - **Property 9: Manual Booking Invariants**
+    - For any manual booking: bookingType=MANUAL, paymentStatus=NOT_REQUIRED, totalAmountCents=null, platformFeeCents=null, status=CONFIRMED regardless of confirmationMode
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 9: Manual Booking Invariants`
+    - **Validates: Requirements 3.1, 3.3, 3.5**
+  - [ ]* 2.9 Write property test for RecurringPattern weeks validation
+    - **Property 19: Recurring Weeks Validation**
+    - For any weeks < 2 or > 12, RecurringPattern construction should throw IllegalArgumentException
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 19: Recurring Weeks Validation`
+    - **Validates: Requirements 9.8**
+  - [ ]* 2.10 Write property test for BookingSlot time ordering
+    - For any BookingSlot where endTime is not after startTime or durationMinutes <= 0, construction should throw IllegalArgumentException
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, BookingSlot Time Ordering`
+    - **Validates: Requirements 2.19**
+
+- [ ] 3. Checkpoint — Domain layer review
+  - Ensure all tests pass, ask the user if questions arise.
+
+
+- [ ] 4. Application layer — commands, ports, and interfaces
+  - [ ] 4.1 Create self-validating command records in `gr.courtbooking.transaction.application.port.in`
+    - `CreateBookingCommand`: customerId, courtId, date, startTime, durationMinutes (nullable), numberOfPeople (nullable), paymentMethodId, idempotencyKey — null checks on required fields
+    - `CreateManualBookingCommand`: courtOwnerId, courtId, date, startTime, durationMinutes (nullable), customerName, customerPhone, customerEmail, notes, recurring (RecurringConfig nullable)
+    - `RecurringConfig(int frequencyWeeks, int durationWeeks)` — validate frequencyWeeks=1, durationWeeks 1-12
+    - `ConfirmBookingCommand`: bookingId, courtOwnerId, message (nullable)
+    - `RejectBookingCommand`: bookingId, courtOwnerId, reason (nullable)
+    - `CancelBookingCommand`: bookingId, cancelledBy, cancelledByRole, reason, idempotencyKey
+    - `ModifyBookingCommand`: bookingId, customerId, newDate, newStartTime
+    - `CreateRecurringBookingCommand`: customerId, courtId, startDate, startTime, paymentMethodId, weeks (2-12), numberOfPeople (nullable)
+    - `FlagNoShowCommand`: bookingId, courtOwnerId, notes (nullable)
+    - `MarkPaidExternallyCommand`: bookingId, courtOwnerId, paymentMethod, notes (nullable)
+    - `BulkBookingActionCommand`: courtOwnerId, bookingIds, action (CONFIRM/REJECT), message, reason
+    - `ExportCalendarCommand`: courtOwnerId, courtId (nullable), fromDate, toDate
+    - `InitiateOnboardingCommand`: courtOwnerId, returnUrl, refreshUrl
+    - `UpdatePayoutScheduleCommand`: courtOwnerId, interval, weeklyAnchor, monthlyAnchor
+    - `AddPaymentMethodCommand`: customerId, setupIntentId
+    - `SubmitDisputeEvidenceCommand`: paymentId, courtOwnerId, bookingConfirmation, courtUsageLogs, additionalNotes
+    - _Requirements: 1.1, 2.1, 3.1, 4.2, 4.4, 7.1, 8.1, 9.1, 11.1, 12.1, 14.1, 15.1_
+  - [ ] 4.2 Create incoming port interfaces (use cases and queries)
+    - Stripe Connect: `InitiateStripeConnectOnboardingUseCase`, `GetStripeConnectStatusUseCase`, `GetStripeConnectPayoutsUseCase`, `UpdatePayoutScheduleUseCase`
+    - Booking creation: `CreateBookingUseCase`, `CreateManualBookingUseCase`, `CreateRecurringBookingUseCase`
+    - Booking lifecycle: `ConfirmBookingUseCase`, `RejectBookingUseCase`, `CancelBookingUseCase`, `ModifyBookingUseCase`
+    - Booking queries: `ListBookingsQuery`, `GetBookingDetailQuery`, `ListPendingBookingsQuery`, `GetRecurringBookingGroupQuery`
+    - Payment: `ListPaymentMethodsUseCase`, `AddPaymentMethodUseCase`, `CreateSetupIntentUseCase`, `GetReceiptUseCase`, `GetRefundStatusQuery`, `GetDisputeDetailsQuery`, `SubmitDisputeEvidenceUseCase`
+    - Operations: `FlagNoShowUseCase`, `MarkBookingPaidExternallyUseCase`, `BulkBookingActionUseCase`, `ExportBookingCalendarUseCase`
+    - Webhook: `ProcessStripeWebhookUseCase`
+    - _Requirements: 1–25_
+  - [ ] 4.3 Create outgoing port interfaces in `gr.courtbooking.transaction.application.port.out`
+    - Persistence: `LoadBookingPort`, `SaveBookingPort`, `LoadPaymentPort`, `SavePaymentPort`, `AuditLogPort`
+    - Cross-schema views: `CourtSummaryPort`, `UserBasicPort`, `CancellationTierPort`
+    - Stripe: `StripePaymentPort` (createPaymentIntent, capturePaymentIntent, cancelPaymentIntent, createRefund, listPaymentMethods, createSetupIntent, attachPaymentMethod, createStripeCustomer), `StripeConnectPort` (createExpressAccount, createAccountLink, getAccountStatus, getPayouts, updatePayoutSchedule, verifyWebhookSignature)
+    - Platform Service client: `PlatformServicePort` (validateSlot, calculatePrice, getStripeConnectStatus, updateStripeConnectStatus, updateStripeCustomerId)
+    - Redis: `SlotHoldPort` (acquireHold, releaseHold, isHeld), `IdempotencyPort` (getResponse, storeResponse), `WebhookDeduplicationPort` (isProcessed, markProcessed)
+    - Kafka: `BookingEventPublisherPort` (publishBookingCreated, publishBookingConfirmed, publishBookingCancelled, publishBookingModified, publishBookingCompleted, publishSlotHeld, publishSlotReleased), `NotificationEventPublisherPort` (publishNotificationRequested)
+    - _Requirements: 2.2, 2.5, 2.6, 2.7, 5.1, 17.1, 18.1, 19.1, 20.1, 21.1, 22.1_
+
+
+- [ ] 5. Stripe Connect onboarding
+  - [ ] 5.1 Implement `StripeConnectService` (application layer)
+    - `initiateOnboarding`: load court owner from UserBasicPort, create Express account if none exists (reuse existing if abandoned), map business_type (SOLE_PROPRIETOR→individual, COMPANY→company, ASSOCIATION→non_profit), return onboarding URL
+    - `getStatus`: return current Stripe Connect status, payoutsEnabled, chargesEnabled, requiresAction, actionUrl
+    - `getPayouts`: fetch payout schedule, payout history, balance from StripeConnectPort
+    - `updatePayoutSchedule`: validate anchor params (weeklyAnchor for WEEKLY, monthlyAnchor 1-31 for MONTHLY), update via StripeConnectPort
+    - Stripe Connect account ID stored in Platform Service via `v_user_basic.stripe_connect_account_id` (Req 1.9 — Platform Service owns this field)
+    - _Requirements: 1.1, 1.2, 1.3, 1.8, 1.9, 1.10, 1.11_
+  - [ ] 5.2 Implement `StripeConnectAdapter` (adapter out) implementing `StripeConnectPort`
+    - Use Stripe Java SDK to create Express accounts, generate account links, fetch account status, manage payouts
+    - Map Stripe account status: charges_enabled + payouts_enabled → ACTIVE, requirements.currently_due non-empty → RESTRICTED, requirements.disabled_reason set → DISABLED, else → PENDING
+    - _Requirements: 1.2, 1.4, 1.10, 1.11_
+  - [ ] 5.3 Implement `StripeConnectController` (adapter in)
+    - `POST /api/payments/stripe-connect/onboard` — COURT_OWNER role required
+    - `GET /api/payments/stripe-connect/status` — COURT_OWNER role required
+    - `GET /api/payments/stripe-connect/payouts` — COURT_OWNER role required
+    - `PUT /api/payments/stripe-connect/payout-schedule` — COURT_OWNER role required
+    - Map domain exceptions to HTTP responses (403 for insufficient role, 400 for invalid anchor)
+    - _Requirements: 1.1, 1.3, 1.10, 1.11_
+  - [ ]* 5.4 Write property test for Stripe Connect onboarding idempotency
+    - **Property 31: Stripe Connect Onboarding Idempotency**
+    - For any court owner who already has a Stripe Connect account, subsequent onboarding requests should reuse the existing account (not create a duplicate)
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 31: Stripe Connect Onboarding Idempotency`
+    - **Validates: Requirements 1.8**
+
+- [ ] 6. Customer booking creation with atomic conflict prevention
+  - [ ] 6.1 Implement `CreateBookingService` (application layer)
+    - Idempotency check: load by idempotencyKey, return existing if found
+    - Stripe customer auto-creation: check v_user_basic.stripe_customer_id, create if null, update via PlatformServicePort
+    - Stripe Connect guard: verify court owner stripe_connect_status = ACTIVE via UserBasicPort
+    - Slot hold: acquire Redis hold via SlotHoldPort, publish SLOT_HELD event
+    - Validation: validate slot via PlatformServicePort, validate capacity, validate booking window (30 days), validate minimum notice (1 hour), validate endTime = startTime + durationMinutes
+    - Default duration: use court's duration_minutes from CourtSummaryPort if not provided
+    - Timezone: use court's timezone from v_court_summary for all time calculations and date comparisons (Req 2.20)
+    - Price calculation: call PlatformServicePort.calculatePrice, compute platform fee via PlatformFeeCalculator
+    - Payment: create Stripe PaymentIntent (automatic capture for INSTANT, manual for MANUAL) with destination charge and application_fee_amount
+    - Booking creation: save booking with snapshotted confirmationMode, save payment record, store stripePaymentIntentId in bookings table (Req 2.23), log audit entry (CREATED action with performed_by=customerId, performed_by_role=CUSTOMER)
+    - Slot release: release Redis hold after DB commit
+    - Events: publish BOOKING_CREATED, NOTIFICATION_REQUESTED (court owner with urgency STANDARD), additional NOTIFICATION_REQUESTED (customer for MANUAL mode with estimated confirmation timeout)
+    - Quartz: schedule ConfirmationTimeoutJob for MANUAL mode bookings
+    - Error handling: release slot hold on payment failure, publish SLOT_RELEASED with releaseReason=PAYMENT_FAILED
+    - Alternative slots: on 409 Conflict, return up to 3 alternative available slots on the same date (Req 2.1)
+    - _Requirements: 2.1–2.25, 5.1–5.3, 5.17, 6.1–6.4_
+  - [ ] 6.2 Implement `SlotHoldRedisAdapter` (adapter out) implementing `SlotHoldPort`
+    - `acquireHold`: SETNX `slot-hold:{courtId}:{date}:{startTime}` with 5-minute TTL
+    - `releaseHold`: DEL key
+    - `isHeld`: EXISTS key
+    - _Requirements: 2.2, 2.3, 2.4_
+  - [ ] 6.3 Implement `StripePaymentAdapter` (adapter out) implementing `StripePaymentPort`
+    - Create PaymentIntent with currency EUR, amount, capture_method, transfer_data.destination, application_fee_amount, customer, payment_method, idempotency_key
+    - Capture, cancel, refund PaymentIntents
+    - List payment methods, create SetupIntent, attach payment method, create Stripe Customer
+    - _Requirements: 2.9, 2.10, 5.1–5.7, 5.14, 5.17_
+  - [ ] 6.4 Implement `PlatformServiceHttpClient` (adapter out) implementing `PlatformServicePort`
+    - `validateSlot`: GET /internal/courts/{courtId}/validate-slot
+    - `calculatePrice`: GET /internal/courts/{courtId}/calculate-price
+    - `getStripeConnectStatus`: GET /internal/users/{userId}/stripe-connect-status
+    - `updateStripeConnectStatus`: PUT /internal/users/{userId}/stripe-connect-status
+    - `updateStripeCustomerId`: PUT /internal/users/{userId}/stripe-customer-id
+    - Use RestClient with internal API key header (dev/test) or mTLS (staging/prod)
+    - _Requirements: 2.6, 2.7, 1.4, 5.17_
+  - [ ] 6.5 Implement `BookingController` (adapter in) — booking creation endpoint
+    - `POST /api/bookings` — CUSTOMER role, X-Idempotency-Key header required
+    - Map CreateBookingRequest DTO to CreateBookingCommand
+    - Map domain result to BookingResponse with courtTimezone, courtLocalStartTime/EndTime, customerTimezoneReference
+    - Map exceptions: 409 for TimeSlotUnavailableException (with alternativeSlots), 402 for PaymentFailedException, 422 for BookingWindowExceededException/MinimumNoticeNotMetException, 400 for CapacityExceededException
+    - _Requirements: 2.1, 2.21_
+  - [ ]* 6.6 Write property test for booking creation idempotency
+    - **Property 3: Booking Creation Idempotency**
+    - For any booking creation with an idempotency key, submitting twice returns same bookingId without creating a duplicate
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 3: Booking Creation Idempotency`
+    - **Validates: Requirements 2.11, 21.2**
+  - [ ]* 6.7 Write property test for confirmation mode determines initial status
+    - **Property 2: Confirmation Mode Determines Initial Booking Status**
+    - For any customer booking: INSTANT → CONFIRMED + CAPTURED, MANUAL → PENDING_CONFIRMATION + AUTHORIZED
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 2: Confirmation Mode Determines Initial Status`
+    - **Validates: Requirements 2.9, 2.10, 4.1**
+  - [ ]* 6.8 Write property test for Stripe Connect guard
+    - **Property 11: Stripe Connect Guard for Customer Bookings**
+    - For any customer booking where court owner stripe_connect_status != ACTIVE, request rejected with STRIPE_CONNECT_NOT_ACTIVE
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 11: Stripe Connect Guard`
+    - **Validates: Requirements 1.7**
+  - [ ]* 6.9 Write property test for slot conflict prevention
+    - **Property 12: Slot Conflict Prevention**
+    - For any two booking requests for same court, date, and overlapping time, at most one succeeds
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 12: Slot Conflict Prevention`
+    - **Validates: Requirements 2.2, 2.5**
+  - [ ]* 6.10 Write property test for advance booking window enforcement
+    - **Property 7: Advance Booking Window Enforcement**
+    - For any booking date > 30 days from today, request rejected with BOOKING_WINDOW_EXCEEDED
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 7: Advance Booking Window`
+    - **Validates: Requirements 2.24**
+  - [ ]* 6.11 Write property test for minimum notice period enforcement
+    - **Property 8: Minimum Notice Period Enforcement**
+    - For any booking startTime < 1 hour from now in court timezone, request rejected with MINIMUM_NOTICE_NOT_MET
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 8: Minimum Notice Period`
+    - **Validates: Requirements 2.25**
+  - [ ]* 6.12 Write property test for default duration fallback
+    - **Property 5: Default Duration Fallback**
+    - For any booking without durationMinutes, resulting booking uses court's duration_minutes from v_court_summary
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 5: Default Duration Fallback`
+    - **Validates: Requirements 2.17, 3.8**
+  - [ ]* 6.13 Write property test for capacity validation
+    - **Property 6: Capacity Validation**
+    - For any booking where numberOfPeople > court maxCapacity, request rejected with CAPACITY_EXCEEDED
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 6: Capacity Validation`
+    - **Validates: Requirements 2.18**
+
+- [ ] 7. Checkpoint — Booking creation review
+  - Ensure all tests pass, ask the user if questions arise.
+
+
+- [ ] 8. Manual booking creation and external payment tracking
+  - [ ] 8.1 Implement `CreateManualBookingService` (application layer)
+    - Validate court ownership via CourtSummaryPort (owner_id check)
+    - Apply same slot conflict prevention (Redis hold + DB check) as customer bookings
+    - Set bookingType=MANUAL, paymentStatus=NOT_REQUIRED, totalAmountCents=null, platformFeeCents=null, status=CONFIRMED regardless of confirmationMode
+    - Default duration from court if not provided
+    - Store customerName, customerPhone, notes
+    - Support recurring manual bookings: generate recurring_group_id, create weekly instances for durationWeeks (1-12), allow partial creation (207 Multi-Status for conflicts)
+    - Audit log: CREATED with performed_by_role=COURT_OWNER
+    - Publish BOOKING_CREATED event with bookingType=MANUAL
+    - _Requirements: 3.1–3.12_
+  - [ ] 8.2 Implement `MarkBookingPaidExternallyService` (application layer)
+    - Validate bookingType=MANUAL, validate court ownership
+    - Set paymentStatus=PAID_EXTERNALLY, paidExternally=true, store paymentMethod and notes
+    - Audit log: PAYMENT_MARKED_EXTERNAL
+    - _Requirements: 12.1–12.5_
+  - [ ] 8.3 Implement `ManualBookingController` (adapter in)
+    - `POST /api/bookings/manual` — COURT_OWNER role required
+    - Map CreateManualBookingRequest DTO (with optional recurring field) to CreateManualBookingCommand
+    - Return 201 for single booking, 207 Multi-Status for recurring with conflicts, 409 for all dates unavailable
+    - _Requirements: 3.1, 3.10, 3.11_
+  - [ ] 8.4 Add `POST /api/bookings/{bookingId}/mark-paid` endpoint to BookingController
+    - COURT_OWNER role required, map to MarkPaidExternallyCommand
+    - Return 200 with paymentStatus=PAID_EXTERNALLY, 422 for NOT_MANUAL_BOOKING
+    - _Requirements: 12.1_
+  - [ ]* 8.5 Write property test for court ownership validation
+    - **Property 10: Court Ownership Validation for Manual Bookings**
+    - For any manual booking where court owner doesn't own the court, request rejected with NOT_COURT_OWNER
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 10: Court Ownership Validation`
+    - **Validates: Requirements 3.2**
+  - [ ]* 8.6 Write property test for external payment marking guard
+    - **Property 21: External Payment Marking Guard**
+    - For any mark-paid request on non-MANUAL booking, request rejected. Resulting paymentStatus=PAID_EXTERNALLY and paidExternally=true
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 21: External Payment Marking Guard`
+    - **Validates: Requirements 12.1, 12.2**
+
+- [ ] 9. Pending confirmation workflow
+  - [ ] 9.1 Implement `ConfirmBookingService` (application layer)
+    - Validate booking status=PENDING_CONFIRMATION
+    - Verify court owner's Stripe Connect status=ACTIVE via PlatformServicePort (fresh check before capture)
+    - Capture Stripe PaymentIntent via StripePaymentPort
+    - Update booking status=CONFIRMED, payment status=CAPTURED, set confirmedAt
+    - Audit log: CONFIRMED with performed_by_role=COURT_OWNER
+    - Publish BOOKING_CONFIRMED event, NOTIFICATION_REQUESTED to customer (STANDARD urgency)
+    - Handle expired payment method: publish NOTIFICATION_REQUESTED (PAYMENT_FAILED, CRITICAL), schedule PaymentMethodExpiryTimeoutJob
+    - _Requirements: 4.2, 4.3, 4.7, 4.9, 4.12, 5.18_
+  - [ ] 9.2 Implement `RejectBookingService` (application layer)
+    - Validate booking status=PENDING_CONFIRMATION
+    - Void Stripe authorization via StripePaymentPort.cancelPaymentIntent
+    - Update booking status=REJECTED, payment status=REFUNDED
+    - Audit log: REJECTED with rejection reason in details
+    - Publish BOOKING_CANCELLED event (cancelledBy=COURT_OWNER), NOTIFICATION_REQUESTED to customer (CRITICAL urgency)
+    - _Requirements: 4.4, 4.8, 4.10, 4.13_
+  - [ ] 9.3 Implement `ListPendingBookingsService` (application layer)
+    - Load pending bookings by courtOwnerId with optional courtId filter, paginated, sorted by creation date ascending
+    - Enrich with court name and timezone from CourtSummaryPort
+    - _Requirements: 4.11_
+  - [ ] 9.4 Add confirm/reject/pending endpoints to BookingController
+    - `POST /api/bookings/{bookingId}/confirm` — COURT_OWNER role, input: { message?: string }
+    - `POST /api/bookings/{bookingId}/reject` — COURT_OWNER role, input: { reason?: string }
+    - `GET /api/bookings/pending` — COURT_OWNER role with courtId, page, size params
+    - _Requirements: 4.2, 4.4, 4.11_
+  - [ ]* 9.5 Write property test for confirmation mode snapshot immutability
+    - **Property 4: Confirmation Mode Snapshot Immutability**
+    - For any booking, confirmationMode equals the court's mode at creation time, regardless of subsequent court changes
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 4: Confirmation Mode Snapshot Immutability`
+    - **Validates: Requirements 2.12**
+
+
+- [ ] 10. Booking modification and cancellation
+  - [ ] 10.1 Implement `ModifyBookingService` (application layer)
+    - Validate booking isModifiable (status=CONFIRMED, bookingType=CUSTOMER)
+    - Validate new slot via PlatformServicePort (availability + conflict check)
+    - Calculate new price via PlatformServicePort, compute price difference
+    - Price increase: create new Stripe PaymentIntent for difference, return paymentIntentClientSecret
+    - Price decrease: initiate partial Stripe refund for difference
+    - Update booking date, startTime, endTime, totalAmountCents, recalculate platformFeeCents and courtOwnerNetCents
+    - Audit log: MODIFIED with before/after date, time, price in details
+    - Publish BOOKING_MODIFIED event, NOTIFICATION_REQUESTED to court owner
+    - _Requirements: 7.1–7.10_
+  - [ ] 10.2 Implement `CancelBookingService` (application layer)
+    - Validate booking isCancellable (CONFIRMED or PENDING_CONFIRMATION)
+    - Idempotency: check Redis cache for existing cancellation result
+    - Customer cancellation of CONFIRMED booking: load tiers from CancellationTierPort, calculate refund via CancellationRefundCalculator (platform fee non-refundable, refund = courtOwnerNetCents × refundPercent / 100) (Req 8.3)
+    - Court owner cancellation: full refund of totalAmountCents — Stripe automatically reverses application_fee_amount on full destination charge refund (Req 8.4, 6.5)
+    - System cancellation (timeout): full refund of totalAmountCents including platform fee (Req 6.5)
+    - PENDING_CONFIRMATION customer cancellation: void authorization (full refund regardless of tiers) (Req 8.11)
+    - Customer cancellation partial refund: refund only courtOwnerNet portion, platform fee retained (Req 6.6)
+    - Initiate Stripe refund (full or partial), update booking and payment status
+    - Audit log: CANCELLED with reason, refund amount, applied tier in details JSONB
+    - Publish BOOKING_CANCELLED event (with cancelledBy, cancellationReason, refundAmountCents, refundPercentage, waitlistEnabled), NOTIFICATION_REQUESTED to customer (with refund details) and court owner (with cancellation details)
+    - Store idempotency result in Redis (24h TTL)
+    - _Requirements: 8.1–8.13, 6.5, 6.6_
+  - [ ] 10.3 Add modify/cancel endpoints to BookingController
+    - `PUT /api/bookings/{bookingId}/modify` — CUSTOMER role
+    - `POST /api/bookings/{bookingId}/cancel` — CUSTOMER or COURT_OWNER role, X-Idempotency-Key header
+    - Map ModifyBookingRequest DTO, return BookingModificationResult
+    - Map CancellationResult with refundAmount, refundPercentage, policyTierApplied, platformFeeRetained
+    - _Requirements: 7.1, 8.1_
+  - [ ]* 10.4 Write property test for court owner cancellation full refund
+    - **Property 14: Court Owner Cancellation Full Refund**
+    - For any court-owner or system cancellation, refund = full totalAmountCents including platform fee
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 14: Court Owner Cancellation Full Refund`
+    - **Validates: Requirements 8.4**
+  - [ ]* 10.5 Write property test for pending booking customer cancellation
+    - **Property 15: Pending Booking Customer Cancellation Full Refund**
+    - For any PENDING_CONFIRMATION booking cancelled by customer, Stripe authorization voided with full refund regardless of tiers
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 15: Pending Booking Customer Cancellation`
+    - **Validates: Requirements 8.11**
+  - [ ]* 10.6 Write property test for cancellation status guard
+    - **Property 16: Cancellation Status Guard**
+    - For any cancellation on booking with status not in (CONFIRMED, PENDING_CONFIRMATION), request rejected
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 16: Cancellation Status Guard`
+    - **Validates: Requirements 8.10**
+  - [ ]* 10.7 Write property test for modification status guard
+    - **Property 17: Modification Status Guard**
+    - For any modification on booking not CONFIRMED or not CUSTOMER type, request rejected
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 17: Modification Status Guard`
+    - **Validates: Requirements 7.2**
+
+- [ ] 11. Recurring bookings
+  - [ ] 11.1 Implement `CreateRecurringBookingService` (application layer)
+    - Generate recurring_group_id (UUID)
+    - Validate weeks 2-12, validate startDate falls on correct day of week (Req 9.9)
+    - Loop through each week: validate slot, calculate price, create PaymentIntent, save booking with recurring_group_id and recurringPattern
+    - Allow partial creation: collect conflicting dates, book non-conflicting ones
+    - Return RecurringBookingResult with createdBookings, conflictingDates, totalCreated, totalConflicts
+    - Return 409 if ALL dates conflict
+    - Each instance is independently cancellable — cancelling one does not affect the group (Req 9.10)
+    - Publish BOOKING_CREATED event for each successful instance with recurringGroupId
+    - _Requirements: 9.1–9.11_
+  - [ ] 11.2 Implement `GetRecurringBookingGroupService` (application layer)
+    - Load all bookings by recurringGroupId, validate requester is customer or court owner
+    - Return RecurringBookingGroup with all instances and their individual statuses
+    - _Requirements: 9.7_
+  - [ ] 11.3 Implement `RecurringBookingController` (adapter in)
+    - `POST /api/bookings/recurring` — CUSTOMER role
+    - `GET /api/bookings/recurring/{recurringGroupId}` — CUSTOMER or COURT_OWNER role
+    - _Requirements: 9.1, 9.7_
+  - [ ]* 11.4 Write property test for recurring booking instance count
+    - **Property 18: Recurring Booking Instance Count**
+    - For any recurring request with weeks=N, createdBookings.size() + conflictingDates.size() == N
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 18: Recurring Booking Instance Count`
+    - **Validates: Requirements 9.1, 9.3**
+
+- [ ] 12. Checkpoint — Core booking flows review
+  - Ensure all tests pass, ask the user if questions arise.
+
+
+- [ ] 13. No-show flagging, booking listing, and payment methods
+  - [ ] 13.1 Implement `FlagNoShowService` (application layer)
+    - Validate booking status=COMPLETED, validate court ownership
+    - Validate within 24 hours after booking end time (court timezone)
+    - Set noShow=true, noShowFlaggedAt=now
+    - Audit log: NO_SHOW_FLAGGED with notes
+    - Publish BOOKING_COMPLETED event with noShow=true (for analytics)
+    - _Requirements: 11.1–11.7_
+  - [ ] 13.2 Implement `BookingListingService` (application layer)
+    - Customer: load own bookings with filters (status, fromDate, toDate, courtId, courtType), paginated, sorted by date+startTime desc
+    - Court owner: load bookings for all owned courts (unified view of customer + manual)
+    - Enrich with court name, type, timezone from CourtSummaryPort
+    - GetBookingDetail: load booking, validate authorization (own booking or own court), include cancellation policy tiers, audit trail
+    - _Requirements: 13.1–13.7_
+  - [ ] 13.3 Implement `PaymentMethodService` (application layer)
+    - ListPaymentMethods: load stripe_customer_id from UserBasicPort, call StripePaymentPort.listPaymentMethods
+    - AddPaymentMethod: attach via StripePaymentPort.attachPaymentMethod
+    - CreateSetupIntent: create via StripePaymentPort.createSetupIntent, return clientSecret
+    - _Requirements: 5.5, 5.6, 5.7, 5.22_
+  - [ ] 13.4 Implement `GetReceiptService` (application layer)
+    - Load booking and payment, load court from CourtSummaryPort, load court owner from UserBasicPort
+    - Build ReceiptResult with VAT fields if court owner is vatRegistered (Greek 24% VAT)
+    - Support JSON and PDF output (PDF via template engine when Accept: application/pdf)
+    - _Requirements: 5.13, 5.19_
+  - [ ] 13.5 Implement `RefundStatusService` and `DisputeDetailsService` (application layer)
+    - GetRefundStatus: load payment, validate requester authorization, return refund status with timestamps
+    - GetDisputeDetails: load payment, return dispute reason, status (OPEN, UNDER_REVIEW, WON, LOST), createdAt
+    - SubmitDisputeEvidence: validate active dispute exists, submit via StripePaymentPort
+    - _Requirements: 5.15, 5.16, 5.20_
+  - [ ] 13.6 Add no-show, listing, receipt, and payment endpoints to BookingController and PaymentController
+    - `POST /api/bookings/{bookingId}/no-show` — COURT_OWNER role
+    - `GET /api/bookings` — CUSTOMER or COURT_OWNER role with filters
+    - `GET /api/bookings/{bookingId}` — authorized user only
+    - `GET /api/bookings/{bookingId}/receipt` — authorized user, support Accept: application/pdf
+    - `GET /api/payments/methods`, `POST /api/payments/methods`, `POST /api/payments/setup-intent` — CUSTOMER role
+    - `GET /api/payments/{paymentId}/refund`, `GET /api/payments/{paymentId}/dispute`, `POST /api/payments/{paymentId}/dispute/evidence` — authorized user
+    - _Requirements: 5.5–5.7, 5.13, 5.15, 5.16, 5.20, 11.1, 13.1, 13.4_
+  - [ ]* 13.7 Write property test for no-show eligibility
+    - **Property 20: No-Show Eligibility**
+    - For any no-show flagging: succeeds only if status=COMPLETED AND within 24h after end time in court timezone
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 20: No-Show Eligibility`
+    - **Validates: Requirements 11.2, 11.3**
+  - [ ]* 13.8 Write property test for booking listing authorization
+    - **Property 22: Booking Listing Authorization**
+    - Customer sees only own bookings, court owner sees only bookings for owned courts. No cross-user leakage
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 22: Booking Listing Authorization`
+    - **Validates: Requirements 13.5**
+
+- [ ] 14. Bulk booking operations and iCal export
+  - [ ] 14.1 Implement `BulkBookingActionService` (application layer)
+    - Validate batch size ≤ 50
+    - Validate all bookings belong to courts owned by the court owner
+    - Process each booking independently: CONFIRM → same logic as ConfirmBookingService, REJECT → same logic as RejectBookingService
+    - Collect per-booking results (SUCCESS/FAILED with error)
+    - Publish individual BOOKING_CONFIRMED/BOOKING_CANCELLED and NOTIFICATION_REQUESTED events per successful booking
+    - Return BulkActionResult with results, successCount, failureCount
+    - _Requirements: 14.1–14.8_
+  - [ ] 14.2 Implement `ExportBookingCalendarService` (application layer)
+    - Load bookings for court owner's courts (filter by courtId, fromDate, toDate)
+    - Default fromDate=today, toDate=today+30 days
+    - Include only CONFIRMED and PENDING_CONFIRMATION bookings
+    - Generate iCalendar (RFC 5545) with VCALENDAR/VEVENT entries: UID (bookingId), DTSTART/DTEND (court timezone), SUMMARY (court name + booking type), DESCRIPTION (customer name, status, payment status), LOCATION (court address)
+    - _Requirements: 15.1–15.6_
+  - [ ] 14.3 Implement `BulkBookingController` and `BookingCalendarController` (adapters in)
+    - `POST /api/bookings/bulk-action` — COURT_OWNER role, return 207 Multi-Status
+    - `GET /api/bookings/calendar/ical` — COURT_OWNER role, return Content-Type: text/calendar
+    - _Requirements: 14.1, 15.1_
+  - [ ]* 14.4 Write property test for bulk action independence
+    - **Property 23: Bulk Action Independence**
+    - For any bulk action where some bookings fail, successful ones still processed. successCount + failureCount == input count
+    - `@Property(tries = 200)`, tag: `Feature: phase-4-booking-payments, Property 23: Bulk Action Independence`
+    - **Validates: Requirements 14.3**
+  - [ ]* 14.5 Write property test for bulk action size limit
+    - **Property 24: Bulk Action Size Limit**
+    - For any bulk action with > 50 booking IDs, request rejected with BATCH_SIZE_EXCEEDED
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 24: Bulk Action Size Limit`
+    - **Validates: Requirements 14.8**
+  - [ ]* 14.6 Write property test for iCal export content correctness
+    - **Property 25: iCal Export Content Correctness**
+    - For any booking in iCal export: VEVENT contains UID, DTSTART, DTEND, SUMMARY, DESCRIPTION, LOCATION. Only CONFIRMED/PENDING_CONFIRMATION included
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 25: iCal Export Content Correctness`
+    - **Validates: Requirements 15.2, 15.5**
+
+
+- [ ] 15. Persistence adapters and cross-schema views
+  - [ ] 15.1 Create JPA entities in `gr.courtbooking.transaction.adapter.out.persistence.entity`
+    - `BookingJpaEntity`: maps to `transaction.bookings` table with all columns, @Version for optimistic locking, @CreatedDate/@LastModifiedDate, indexes on (court_id, date), (user_id), (court_owner_id), (idempotency_key UNIQUE), (recurring_group_id), unique partial index on (court_id, date, start_time, end_time) WHERE status NOT IN ('CANCELLED', 'REJECTED')
+    - `PaymentJpaEntity`: maps to `transaction.payments` table, FK to bookings, index on (stripe_payment_intent_id), (booking_id)
+    - `AuditLogJpaEntity`: maps to `transaction.audit_logs` table, index on (booking_id), (created_at). Details stored as JSONB via @JdbcTypeCode(SqlTypes.JSON)
+    - _Requirements: 2.1, 5.4, 23.1_
+  - [ ] 15.2 Create Spring Data JPA repositories
+    - `BookingRepository`: findByIdempotencyKey, findByCourtIdAndDateAndStatusNotIn, findByUserIdAndFilters (paginated), findByCourtOwnerIdAndFilters (paginated), findByStatusAndEndTimeBefore (for completion job), findByRecurringGroupId, findByCourtIdAndDateGreaterThanEqualAndRecurringGroupIdNotNull (for price updates), findPendingByCourtOwnerId (paginated)
+    - `PaymentRepository`: findByStripePaymentIntentId, findByBookingId
+    - `AuditLogRepository`: findByBookingIdOrderByCreatedAtAsc
+    - _Requirements: 2.5, 13.1, 16.1, 23.7_
+  - [ ] 15.3 Create MapStruct mappers for persistence boundary
+    - `BookingPersistenceMapper`: toDomain(BookingJpaEntity) → Booking, toEntity(Booking) → BookingJpaEntity
+    - `PaymentPersistenceMapper`: toDomain(PaymentJpaEntity) → Payment, toEntity(Payment) → PaymentJpaEntity
+    - `AuditLogPersistenceMapper`: toDomain(AuditLogJpaEntity) → BookingAuditLogEntry, toEntity(BookingAuditLogEntry) → AuditLogJpaEntity
+    - _Requirements: 2.1, 5.4, 23.1_
+  - [ ] 15.4 Implement `BookingPersistenceAdapter` implementing LoadBookingPort + SaveBookingPort
+    - Delegate to BookingRepository, map via BookingPersistenceMapper
+    - _Requirements: 2.1, 2.5, 13.1_
+  - [ ] 15.5 Implement `PaymentPersistenceAdapter` implementing LoadPaymentPort + SavePaymentPort
+    - Delegate to PaymentRepository, map via PaymentPersistenceMapper
+    - _Requirements: 5.4_
+  - [ ] 15.6 Implement `AuditLogPersistenceAdapter` implementing AuditLogPort
+    - log(): save entry (append-only), loadByBookingId(): return sorted by createdAt asc
+    - Supported audit actions (Req 23.2): CREATED, CONFIRMED, REJECTED, CANCELLED, MODIFIED, COMPLETED, NO_SHOW_FLAGGED, PAYMENT_CAPTURED, PAYMENT_FAILED, PAYMENT_REFUNDED, PAYMENT_DISPUTED, PAYMENT_MARKED_EXTERNAL
+    - performedByRole values (Req 23.3): CUSTOMER, COURT_OWNER, SYSTEM
+    - Details JSONB includes before/after snapshots for MODIFIED (Req 23.4), refund details for CANCELLED (Req 23.5)
+    - _Requirements: 23.1–23.7_
+  - [ ] 15.7 Implement cross-schema view adapters
+    - `CourtSummaryViewAdapter` implementing CourtSummaryPort — read from `v_court_summary` via read-only JPA entity + repository
+    - `UserBasicViewAdapter` implementing UserBasicPort — read from `v_user_basic` via read-only JPA entity + repository
+    - `CancellationTierViewAdapter` implementing CancellationTierPort — read from `v_court_cancellation_tiers` via read-only JPA entity + repository
+    - `UserSkillLevelViewAdapter` — read from `v_user_skill_level` (read but not actively used in Phase 4, prepared for Phase 10 open matches) (Req 20.4)
+    - Read-only JPA entities: @Immutable annotation, no @Version
+    - Critical reads (Stripe Connect status before payment capture) use Platform Service internal API, not cross-schema view (Req 20.6)
+    - _Requirements: 20.1, 20.2, 20.3, 20.4, 20.5, 20.6_
+  - [ ]* 15.8 Write property test for audit log append-only integrity
+    - **Property 28: Audit Log Append-Only Integrity**
+    - For any audit log entry, it should never be modified or deleted. Count of entries for a booking only increases
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 28: Audit Log Append-Only Integrity`
+    - **Validates: Requirements 23.6**
+
+- [ ] 16. Checkpoint — Persistence and core services review
+  - Ensure all tests pass, ask the user if questions arise.
+
+
+- [ ] 17. Kafka integration — publishing and consuming
+  - [ ] 17.1 Create Kafka event DTOs in `gr.courtbooking.transaction.adapter.out.kafka.event`
+    - `BookingCreatedEvent`, `BookingConfirmedEvent`, `BookingCancelledEvent`, `BookingModifiedEvent`, `BookingCompletedEvent`, `SlotHeldEvent`, `SlotReleasedEvent` — matching Kafka event contract schemas
+    - `NotificationRequestedEvent` — with bilingual title/body, urgency, channels, data payload
+    - `EventEnvelope` wrapper with eventId, eventType, source, timestamp, traceId, spanId, correlationId, payload
+    - _Requirements: 17.2, 17.3, 22.1_
+  - [ ] 17.2 Implement `BookingEventKafkaPublisher` (adapter out) implementing BookingEventPublisherPort
+    - Publish to `booking-events` topic with courtId as partition key
+    - Wrap all events in EventEnvelope with traceId/spanId from MDC (OpenTelemetry) — propagate W3C Trace Context for end-to-end distributed tracing (Req 17.10)
+    - Implement NoOp variant for testing
+    - _Requirements: 17.1–17.10_
+  - [ ] 17.3 Implement `NotificationEventKafkaPublisher` (adapter out) implementing NotificationEventPublisherPort
+    - Publish to `notification-events` topic with userId as partition key
+    - Include bilingual title/body, urgency level, channels, data payload per notification catalog
+    - Implement NoOp variant for testing
+    - _Requirements: 22.1–22.6_
+  - [ ] 17.4 Implement `CourtUpdateEventKafkaConsumer` (adapter in)
+    - Consumer group: `transaction-service-court-update-consumer`, auto.offset.reset=latest
+    - Route by eventType:
+      - `COURT_UPDATED` → update local court config cache (confirmation mode, duration, capacity). Validate confirmationTimeoutHours ≤ 144 (Stripe 7-day hold minus 24h buffer), cap defensively if exceeded (Req 4.16)
+      - `PRICING_UPDATED` → update pricing cache, recalculate prices for future unconfirmed recurring instances, publish NOTIFICATION_REQUESTED for price changes
+      - `AVAILABILITY_UPDATED` (OVERRIDE_CREATED) → auto-cancel conflicting confirmed bookings (full refund, cancelled_by=SYSTEM, reason=AVAILABILITY_OVERRIDE_CONFLICT), publish events
+      - `CANCELLATION_POLICY_UPDATED` → update local cancellation tier cache
+      - `COURT_DELETED` → remove from cache, prevent new bookings
+      - `STRIPE_CONNECT_STATUS_CHANGED` → update Stripe Connect status cache, block captures if RESTRICTED/DISABLED
+    - Idempotent processing via eventId deduplication (Redis 24h TTL)
+    - _Requirements: 4.16, 18.1–18.9_
+  - [ ]* 17.5 Write property test for booking event partition key
+    - **Property 33: Booking Event Partition Key**
+    - For any event published to booking-events topic, partition key should be courtId
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 33: Booking Event Partition Key`
+    - **Validates: Requirements 17.1**
+
+- [ ] 18. Stripe webhook handling
+  - [ ] 18.1 Implement `StripeWebhookProcessingService` (application layer)
+    - Verify webhook signature via StripeConnectPort.verifyWebhookSignature
+    - Reject invalid signatures (400) and timestamps > 5 min old (400)
+    - Check Redis for processed event ID (skip duplicate → 200 OK)
+    - Route by event type:
+      - `payment_intent.succeeded` → update payment to CAPTURED, booking to CONFIRMED
+      - `payment_intent.payment_failed` → update payment to FAILED, cancel booking, release slot hold, publish NOTIFICATION_REQUESTED (CRITICAL)
+      - `payment_intent.canceled` → update payment status, reconcile booking
+      - `charge.dispute.created` → update payment to DISPUTED, publish NOTIFICATION_REQUESTED to court owner (CRITICAL)
+      - `charge.dispute.closed` → update dispute status (WON/LOST)
+      - `charge.refunded` → reconcile refund state
+      - `account.updated` → extract Stripe Connect status, call PlatformServicePort.updateStripeConnectStatus, publish NOTIFICATION_REQUESTED for status transitions (ACTIVE→STANDARD, RESTRICTED→CRITICAL, DISABLED→CRITICAL)
+    - Mark event ID as processed in Redis (24h TTL)
+    - Always return 200 OK to Stripe
+    - _Requirements: 19.1–19.8, 1.4, 1.5, 1.6_
+  - [ ] 18.2 Implement `WebhookDeduplicationRedisAdapter` (adapter out) implementing WebhookDeduplicationPort
+    - `isProcessed(stripeEventId)`: check Redis key `webhook:processed:{stripeEventId}`
+    - `markProcessed(stripeEventId, Duration ttl)`: set Redis key with 24h TTL
+    - _Requirements: 19.5_
+  - [ ] 18.3 Implement `StripeWebhookController` (adapter in)
+    - `POST /api/webhooks/stripe` — NO JWT authentication, security via signature verification only
+    - Read raw request body and Stripe-Signature header
+    - Delegate to ProcessStripeWebhookUseCase
+    - Always return 200 OK (log failures, handle asynchronously)
+    - _Requirements: 19.1, 19.8_
+  - [ ]* 18.4 Write property test for webhook signature rejection
+    - **Property 29: Webhook Signature Rejection**
+    - For any webhook with invalid signature or timestamp > 5 min, request rejected with 400
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 29: Webhook Signature Rejection`
+    - **Validates: Requirements 19.1, 19.3**
+  - [ ]* 18.5 Write property test for webhook idempotent processing
+    - **Property 30: Webhook Idempotent Processing**
+    - For any webhook event processed twice (same Stripe event ID), second processing is no-op
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 30: Webhook Idempotent Processing`
+    - **Validates: Requirements 19.5**
+
+
+- [ ] 19. Idempotency support
+  - [ ] 19.1 Implement `IdempotencyRedisAdapter` (adapter out) implementing IdempotencyPort
+    - `getResponse(operationKey)`: check Redis key `idempotency:{operation}:{bookingId}:{key}`
+    - `storeResponse(operationKey, response, Duration ttl)`: set Redis key with 24h TTL
+    - _Requirements: 21.3_
+  - [ ] 19.2 Wire idempotency into all state-changing services
+    - CreateBookingService: DB UNIQUE constraint on bookings.idempotency_key + check before processing
+    - CreateManualBookingService: auto-generate idempotency key if not provided
+    - ConfirmBookingService, RejectBookingService, CancelBookingService: Redis-based idempotency cache
+    - Pass idempotency key to Stripe PaymentIntent creation for Stripe-level deduplication
+    - Generate internal idempotency key if X-Idempotency-Key header not provided
+    - _Requirements: 21.1–21.5_
+
+- [ ] 20. Quartz scheduled jobs
+  - [ ] 20.1 Implement `ConfirmationTimeoutJob` (Quartz job)
+    - Per-booking SimpleTrigger, fire time = booking.created_at + court.confirmation_timeout_hours
+    - Idempotent: check booking status before acting — no-op if already CONFIRMED, CANCELLED, or REJECTED
+    - Actions: void Stripe authorization, update booking status=CANCELLED (cancelled_by=SYSTEM, reason=CONFIRMATION_TIMEOUT), update payment status=REFUNDED
+    - Audit log: CANCELLED
+    - Publish BOOKING_CANCELLED event, NOTIFICATION_REQUESTED to customer (CRITICAL) and court owner (CRITICAL)
+    - _Requirements: 4.5, 4.6, 4.14_
+  - [ ] 20.2 Implement `BookingCompletionJob` (Quartz cron job)
+    - Cron: `0 0/15 * * * ?` (every 15 minutes)
+    - Query: CONFIRMED bookings past end time using court timezone from v_court_summary
+    - Transition to COMPLETED, audit log (performed_by_role=SYSTEM), publish BOOKING_COMPLETED event
+    - Clustered mode (isClustered=true)
+    - _Requirements: 16.1–16.5_
+  - [ ] 20.3 Implement `RecurringAdvanceSchedulingJob` (Quartz cron job)
+    - Cron: `0 0 3 ? * MON` (weekly, Monday 3 AM)
+    - Query active recurring groups where latest instance < today + 4 weeks
+    - For each new date: validate slot, calculate price, create PaymentIntent, save booking
+    - Skip conflicts (log reason), skip payment failures (publish NOTIFICATION_REQUESTED PAYMENT_FAILED)
+    - Publish NOTIFICATION_REQUESTED for price changes (RECURRING_BOOKING_PRICE_CHANGED)
+    - _Requirements: 10.1–10.6_
+  - [ ] 20.4 Implement `PaymentReconciliationJob` (Quartz cron job)
+    - Cron: `0 7/15 * * * ?` (every 15 minutes, offset by 7 min)
+    - Check 1: AUTHORIZED payments older than 30 min → capture or cancel based on booking status
+    - Check 2: Stripe PaymentIntents in requires_capture with no matching booking → cancel
+    - Check 3: CONFIRMED bookings with payment_status=PENDING → flag for manual review
+    - Stripe is source of truth: when discrepancy detected between local state and Stripe state, log reconciliation warning and update local state to match Stripe (Req 25.3)
+    - All reconciliation actions logged to audit_logs
+    - _Requirements: 19.7, 25.3_
+  - [ ] 20.5 Implement `PendingConfirmationReminderJob` (Quartz cron job)
+    - Cron: `0 0 * * * ?` (hourly)
+    - Query PENDING_CONFIRMATION bookings at 1h, 4h, 12h after creation
+    - Publish NOTIFICATION_REQUESTED (PENDING_CONFIRMATION_REMINDER) to court owner (STANDARD urgency)
+    - _Requirements: 4.17_
+  - [ ] 20.6 Implement `AuthorizationHoldExpiryJob` (Quartz cron job)
+    - Cron: `0 0 0/6 * * ?` (every 6 hours)
+    - Query PENDING_CONFIRMATION bookings where created_at + 6 days < NOW (24h before Stripe 7-day hold)
+    - Auto-cancel: void authorization, update booking (cancelled_by=SYSTEM, reason=AUTHORIZATION_HOLD_EXPIRING)
+    - Publish BOOKING_CANCELLED and NOTIFICATION_REQUESTED to customer + court owner (CRITICAL)
+    - _Requirements: 4.15_
+  - [ ] 20.7 Implement `PaymentMethodExpiryTimeoutJob` (Quartz per-booking job)
+    - Per-booking SimpleTrigger, fire at capture_failure_time + 24 hours
+    - Idempotent: check if payment method was updated
+    - Auto-cancel if not updated: void authorization, update booking (cancelled_by=SYSTEM, reason=PAYMENT_METHOD_EXPIRED)
+    - Publish BOOKING_CANCELLED and NOTIFICATION_REQUESTED to customer + court owner
+    - _Requirements: 5.18_
+  - [ ] 20.8 Configure Quartz with JDBC job store and clustered mode
+    - `org.quartz.jobStore.isClustered=true`, JDBC-based job store using existing Quartz tables from Phase 1b
+    - Configure thread pool, misfire handling
+    - _Requirements: 4.5, 10.5, 16.5_
+  - [ ]* 20.9 Write property test for confirmation timeout job idempotency
+    - **Property 32: Confirmation Timeout Job Idempotency**
+    - For any pending booking where timeout fires, if already confirmed/cancelled/rejected, job is no-op
+    - `@Property(tries = 100)`, tag: `Feature: phase-4-booking-payments, Property 32: Confirmation Timeout Job Idempotency`
+    - **Validates: Requirements 4.14**
+
+- [ ] 21. Checkpoint — Scheduled jobs and Kafka review
+  - Ensure all tests pass, ask the user if questions arise.
+
+
+- [ ] 22. Security configuration and global exception handling
+  - [ ] 22.1 Configure Spring Security for Transaction Service
+    - JWT validation using shared RS256 public key (same as Platform Service)
+    - Role-based access: CUSTOMER for booking creation, COURT_OWNER for manual bookings/confirm/reject/no-show/mark-paid/bulk/ical
+    - Permit webhook endpoint (`POST /api/webhooks/stripe`) without JWT authentication
+    - Permit actuator health endpoint
+    - _Requirements: 2.1, 3.1, 4.2, 19.8_
+  - [ ] 22.2 Implement `GlobalExceptionHandler` (@RestControllerAdvice)
+    - Map BookingException subclasses to appropriate HTTP status codes (400, 402, 403, 404, 409, 422)
+    - Standardized error response format: error, message, details, timestamp, path, traceId
+    - Handle MethodArgumentNotValidException for Bean Validation errors
+    - Handle ConstraintViolationException for DB constraint violations (idempotency key duplicate → return existing response)
+    - _Requirements: 24.2, 25.2_
+  - [ ] 22.3 Create web DTOs (request/response records) in `gr.courtbooking.transaction.adapter.in.web.dto`
+    - Request DTOs: CreateBookingRequest, CreateManualBookingRequest, CreateRecurringBookingRequest, ModifyBookingRequest, BulkActionRequest, MarkPaidRequest, FlagNoShowRequest, InitiateOnboardingRequest, UpdatePayoutScheduleRequest, AddPaymentMethodRequest, SubmitDisputeEvidenceRequest
+    - Response DTOs: BookingResponse (with courtTimezone, courtLocalStartTime/EndTime, customerTimezoneReference), BookingDetailResponse, BookingListResponse, BookingModificationResultResponse, CancellationResultResponse, RecurringBookingResultResponse, BulkActionResultResponse, ReceiptResponse, PaymentMethodResponse, RefundStatusResponse, DisputeDetailResponse, StripeConnectOnboardingResponse, StripeConnectStatusResponse, PayoutsResponse
+    - Use Bean Validation annotations (@NotNull, @Future, @Positive, @Size) on request DTOs
+    - _Requirements: 2.1, 2.21, 7.1, 8.1, 14.1_
+  - [ ] 22.4 Create MapStruct web mappers for controller boundary
+    - `BookingWebMapper`: toResponse(Booking, CourtSummary) → BookingResponse, toDetailResponse(Booking, CourtSummary, List<CancellationTierView>, List<BookingAuditLogEntry>) → BookingDetailResponse
+    - `PaymentWebMapper`: toResponse(Payment) → PaymentMethodResponse, toReceiptResponse(ReceiptResult) → ReceiptResponse
+    - _Requirements: 2.1, 5.13, 13.4_
+
+- [ ] 23. Slot hold expiry listener and Redis configuration
+  - [ ] 23.1 Implement `SlotHoldExpiryListener` (Redis keyspace notification listener)
+    - Subscribe to `__keyevent@0__:expired` events matching `slot-hold:*` pattern
+    - On expiry: publish SLOT_RELEASED event with releaseReason=HOLD_EXPIRED via BookingEventPublisherPort
+    - _Requirements: 2.4, 17.9_
+  - [ ] 23.2 Implement fallback `SlotHoldCleanupJob` (lightweight Quartz job)
+    - Runs every 60 seconds if Redis keyspace notifications unavailable
+    - Track slot holds in secondary Redis sorted set with score = expiry timestamp
+    - Publish SLOT_RELEASED for missed expirations
+    - Auto-activate via health check on startup if keyspace notifications not available
+    - _Requirements: 2.4_
+  - [ ] 23.3 Configure Redis connection and key patterns
+    - Slot holds: `slot-hold:{courtId}:{date}:{startTime}` TTL=5min
+    - Idempotency: `idempotency:{operation}:{bookingId}:{key}` TTL=24h
+    - Webhook dedup: `webhook:processed:{stripeEventId}` TTL=24h
+    - Event dedup: `event:processed:{eventId}` TTL=24h
+    - Stripe Connect cache: `stripe-connect-status:{courtOwnerId}` TTL=5min
+    - _Requirements: 2.2, 19.5, 21.3_
+
+- [ ] 24. Application configuration and wiring
+  - [ ] 24.1 Create `application.yml` configuration for Transaction Service
+    - Server port, context path, datasource (transaction schema), Flyway config
+    - Stripe API keys (via environment variables), webhook signing secret
+    - Redis connection, Kafka bootstrap servers and consumer/producer config
+    - Quartz JDBC job store configuration with clustered mode
+    - Platform Service internal API base URL and API key
+    - Booking window (30 days), minimum notice (1 hour), platform fee rate (10%)
+    - _Requirements: 2.24, 2.25, 6.1_
+  - [ ] 24.2 Create `BeanConfiguration` for wiring ports to adapters
+    - Wire all outgoing port interfaces to their adapter implementations
+    - Configure Stripe client beans, RestClient for Platform Service
+    - Configure Kafka producer/consumer beans
+    - _Requirements: all_
+
+- [ ] 25. Final checkpoint — Full integration review
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 26. Integration and smoke tests
+  - [ ]* 26.1 Write integration test for customer booking creation flow (INSTANT mode)
+    - @SpringBootTest with Testcontainers (PostgreSQL, Redis, Kafka)
+    - WireMock for Platform Service internal API and Stripe API
+    - Verify: slot hold acquired → payment created → booking saved → events published → slot released
+    - _Requirements: 2.1–2.14_
+  - [ ]* 26.2 Write integration test for customer booking creation flow (MANUAL mode)
+    - Verify: slot hold → payment authorized → booking PENDING_CONFIRMATION → Quartz job scheduled → events published
+    - _Requirements: 2.9, 2.10, 4.1, 4.14_
+  - [ ]* 26.3 Write integration test for manual booking creation
+    - Verify: court ownership check → slot hold → booking CONFIRMED → no payment → events published
+    - _Requirements: 3.1–3.7_
+  - [ ]* 26.4 Write integration test for booking cancellation with tiered refund
+    - Verify: tier selection → refund calculation → Stripe refund → status update → events published
+    - _Requirements: 8.1–8.9_
+  - [ ]* 26.5 Write integration test for Stripe webhook processing
+    - Verify: signature verification → deduplication → payment/booking state update → idempotent replay
+    - _Requirements: 19.1–19.6_
+  - [ ]* 26.6 Write integration test for court-update-events consumption
+    - Verify: PRICING_UPDATED → recurring price recalculation → notification published
+    - Verify: AVAILABILITY_UPDATED (OVERRIDE_CREATED) → conflicting bookings auto-cancelled
+    - _Requirements: 18.3, 18.4, 18.9_
+  - [ ]* 26.7 Write endpoint smoke test for all Phase 4 controllers
+    - @SpringBootTest with Testcontainers, verify all endpoints return expected status codes
+    - Cover: BookingController, ManualBookingController, RecurringBookingController, BulkBookingController, BookingCalendarController, PaymentController, StripeConnectController, StripeWebhookController
+    - _Requirements: all_
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation
+- Property tests validate universal correctness properties from the design document
+- Unit tests validate specific examples and edge cases
+- The design uses Java (Spring Boot 4.x / Java 25+) — all code examples use Java
+- Hexagonal architecture order within each feature: domain → application → adapter → tests
+- Cross-cutting concerns (idempotency, security, configuration) are grouped in dedicated tasks
+- All 33 correctness properties from the design document are covered as property test sub-tasks

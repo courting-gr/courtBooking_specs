@@ -40,6 +40,8 @@ tags:
     description: Player matchmaking and open match management
   - name: Split Payments
     description: Split payment between players
+  - name: Stripe Connect
+    description: Stripe Connect onboarding and payout management for court owners
   - name: Webhooks
     description: Stripe webhook handlers (server-to-server)
 
@@ -312,6 +314,7 @@ paths:
       description: |
         Court owner creates a booking without payment processing (walk-in, phone reservation).
         Same conflict prevention as customer bookings. Requires active subscription.
+        Supports optional recurring configuration for weekly bookings (1-12 weeks).
         COURT_OWNER only.
       operationId: createManualBooking
       requestBody:
@@ -322,15 +325,23 @@ paths:
               $ref: '#/components/schemas/CreateManualBookingRequest'
       responses:
         '201':
-          description: Manual booking created
+          description: Manual booking created (single or all recurring instances succeeded)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Booking'
+        '207':
+          description: |
+            Multi-status response for recurring manual bookings where some dates had conflicts.
+            Returns created bookings and conflicting dates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringManualBookingResult'
         '403':
           description: Subscription expired or inactive
         '409':
-          description: Time slot conflict
+          description: Time slot conflict (all dates unavailable for recurring)
 
   # ─── Recurring Bookings ─────────────────────────────────────────────────────
   /api/bookings/recurring:
@@ -1238,6 +1249,154 @@ paths:
         '410':
           description: Payment deadline expired
 
+  # ─── Stripe Connect ──────────────────────────────────────────────────────────
+  /api/payments/stripe-connect/onboard:
+    post:
+      tags: [Stripe Connect]
+      summary: Initiate Stripe Connect onboarding
+      description: |
+        Creates a Stripe Connect Express account (if one does not already exist) and returns
+        a Stripe-hosted onboarding URL. COURT_OWNER only.
+      operationId: initiateStripeConnectOnboarding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [returnUrl, refreshUrl]
+              properties:
+                returnUrl:
+                  type: string
+                  format: uri
+                  description: URL to redirect after onboarding completion
+                refreshUrl:
+                  type: string
+                  format: uri
+                  description: URL to redirect if onboarding link expires
+      responses:
+        '200':
+          description: Onboarding URL generated (or already active)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeConnectOnboardingResult'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/payments/stripe-connect/status:
+    get:
+      tags: [Stripe Connect]
+      summary: Get Stripe Connect status
+      description: Returns the current Stripe Connect onboarding status for the court owner. COURT_OWNER only.
+      operationId: getStripeConnectStatus
+      responses:
+        '200':
+          description: Stripe Connect status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeConnectStatus'
+
+  /api/payments/stripe-connect/payouts:
+    get:
+      tags: [Stripe Connect]
+      summary: Get payout information
+      description: |
+        Returns payout schedule, payout history, balance, and Stripe account status.
+        Data fetched from Stripe Connect API on demand. COURT_OWNER only.
+      operationId: getStripeConnectPayouts
+      responses:
+        '200':
+          description: Payout information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeConnectPayouts'
+
+  /api/payments/stripe-connect/payout-schedule:
+    put:
+      tags: [Stripe Connect]
+      summary: Update payout schedule
+      description: |
+        Updates the court owner's payout schedule (daily, weekly, monthly).
+        COURT_OWNER only.
+      operationId: updatePayoutSchedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePayoutScheduleRequest'
+      responses:
+        '200':
+          description: Payout schedule updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayoutSchedule'
+        '400':
+          description: Invalid payout anchor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/payments/{paymentId}/dispute/evidence:
+    post:
+      tags: [Payments]
+      summary: Submit dispute evidence
+      description: |
+        Court owner submits evidence for an active payment dispute/chargeback.
+        COURT_OWNER only.
+      operationId: submitDisputeEvidence
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bookingConfirmation:
+                  type: string
+                  nullable: true
+                  description: Booking confirmation details as evidence
+                courtUsageLogs:
+                  type: string
+                  nullable: true
+                  description: Court usage logs as evidence
+                additionalNotes:
+                  type: string
+                  nullable: true
+                  description: Additional notes for the dispute
+      responses:
+        '200':
+          description: Evidence submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paymentId:
+                    type: string
+                    format: uuid
+                  evidenceSubmittedAt:
+                    type: string
+                    format: date-time
+        '422':
+          description: No active dispute for this payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   # ─── Webhooks (Server-to-Server) ────────────────────────────────────────────
   /api/webhooks/stripe:
     post:
@@ -1406,11 +1565,11 @@ components:
 
     BookingStatus:
       type: string
-      enum: [CONFIRMED, PENDING_CONFIRMATION, CANCELLED, COMPLETED, MODIFIED]
+      enum: [CONFIRMED, PENDING_CONFIRMATION, CANCELLED, COMPLETED, REJECTED]
 
     PaymentStatus:
       type: string
-      enum: [AUTHORIZED, CAPTURED, REFUNDED, PARTIALLY_REFUNDED, FAILED, DISPUTED]
+      enum: [NOT_REQUIRED, PENDING, AUTHORIZED, CAPTURED, REFUNDED, PARTIALLY_REFUNDED, FAILED, PAID_EXTERNALLY, DISPUTED]
 
     # ─── Bookings ───────────────────────────────────────────────────────────
     CreateBookingRequest:
@@ -1685,6 +1844,24 @@ components:
         notes:
           type: string
           nullable: true
+        recurring:
+          type: object
+          nullable: true
+          description: |
+            Optional recurring configuration for weekly manual bookings.
+            When provided, creates weekly booking instances for the specified duration.
+            Response will be 207 Multi-Status if some dates have conflicts.
+          properties:
+            frequencyWeeks:
+              type: integer
+              enum: [1]
+              description: Only weekly frequency (1) is supported
+            durationWeeks:
+              type: integer
+              minimum: 1
+              maximum: 12
+              description: Number of weeks to create bookings for (1-12)
+          required: [frequencyWeeks, durationWeeks]
 
     # ─── Recurring Bookings ─────────────────────────────────────────────────
     CreateRecurringBookingRequest:
@@ -1747,6 +1924,38 @@ components:
           items:
             $ref: '#/components/schemas/Booking'
         totalInstances:
+          type: integer
+
+    RecurringManualBookingResult:
+      type: object
+      description: Response for recurring manual bookings with partial creation support.
+      properties:
+        recurringGroupId:
+          type: string
+          format: uuid
+        createdBookings:
+          type: array
+          items:
+            type: object
+            properties:
+              bookingId:
+                type: string
+                format: uuid
+              date:
+                type: string
+                format: date
+              status:
+                type: string
+                enum: [CONFIRMED]
+        conflictingDates:
+          type: array
+          items:
+            type: string
+            format: date
+          description: Dates that could not be booked due to conflicts
+        totalCreated:
+          type: integer
+        totalConflicts:
           type: integer
 
     # ─── Payments ───────────────────────────────────────────────────────────
@@ -1815,6 +2024,19 @@ components:
         issuedAt:
           type: string
           format: date-time
+        vatIncluded:
+          type: boolean
+          description: True if court owner is VAT-registered. VAT is included in the total amount.
+        vatNumber:
+          type: string
+          nullable: true
+          description: Court owner's VAT number (e.g., "EL123456789"). Present only when vatIncluded is true.
+        vatAmountCents:
+          type: integer
+          nullable: true
+          description: |
+            VAT amount in cents calculated as grossAmount - (grossAmount / 1.24) for Greek standard 24% rate.
+            Present only when vatIncluded is true.
 
     RefundStatus:
       type: object
@@ -1856,6 +2078,129 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    # ─── Stripe Connect ─────────────────────────────────────────────────────
+    StripeConnectOnboardingResult:
+      type: object
+      properties:
+        onboardingUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Stripe-hosted onboarding URL. Null when status is ACTIVE.
+        stripeAccountId:
+          type: string
+          description: Stripe Connect Express account ID
+        status:
+          type: string
+          enum: [NOT_STARTED, PENDING, ACTIVE, RESTRICTED, DISABLED]
+          description: Current onboarding status. If ACTIVE, no onboarding URL is returned.
+        message:
+          type: string
+          nullable: true
+          description: Human-readable status message (e.g., "Stripe Connect already active")
+
+    StripeConnectStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [NOT_STARTED, PENDING, ACTIVE, RESTRICTED, DISABLED]
+        stripeAccountId:
+          type: string
+          nullable: true
+        requiresAction:
+          type: boolean
+          description: True if the court owner needs to complete additional steps
+        actionUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: URL for the court owner to complete required actions
+        payoutsEnabled:
+          type: boolean
+        chargesEnabled:
+          type: boolean
+
+    StripeConnectPayouts:
+      type: object
+      properties:
+        payoutSchedule:
+          $ref: '#/components/schemas/PayoutSchedule'
+        payouts:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              amount:
+                type: number
+                format: decimal
+              currency:
+                type: string
+                default: EUR
+              status:
+                type: string
+                enum: [PENDING, IN_TRANSIT, PAID, FAILED, CANCELLED]
+              arrivalDate:
+                type: string
+                format: date
+              createdAt:
+                type: string
+                format: date-time
+        balance:
+          type: object
+          properties:
+            available:
+              type: number
+              format: decimal
+            pending:
+              type: number
+              format: decimal
+            currency:
+              type: string
+              default: EUR
+        accountStatus:
+          type: string
+          enum: [ACTIVE, RESTRICTED, DISABLED]
+
+    PayoutSchedule:
+      type: object
+      properties:
+        interval:
+          type: string
+          enum: [DAILY, WEEKLY, MONTHLY]
+        weeklyAnchor:
+          type: string
+          enum: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY]
+          nullable: true
+          description: Required when interval is WEEKLY
+        monthlyAnchor:
+          type: integer
+          minimum: 1
+          maximum: 31
+          nullable: true
+          description: Required when interval is MONTHLY (day of month)
+
+    UpdatePayoutScheduleRequest:
+      type: object
+      required: [interval]
+      properties:
+        interval:
+          type: string
+          enum: [DAILY, WEEKLY, MONTHLY]
+        weeklyAnchor:
+          type: string
+          enum: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY]
+          nullable: true
+          description: Required when interval is WEEKLY
+        monthlyAnchor:
+          type: integer
+          minimum: 1
+          maximum: 31
+          nullable: true
+          description: Required when interval is MONTHLY (day of month)
 
     # ─── Notifications ──────────────────────────────────────────────────────
     Notification:
@@ -2299,9 +2644,32 @@ components:
         bookingId:
           type: string
           format: uuid
-        status:
+        previousDate:
           type: string
-          enum: [MODIFIED]
+          format: date
+          description: Original booking date before modification
+        previousStartTime:
+          type: string
+          format: time
+          description: Original start time before modification
+        newDate:
+          type: string
+          format: date
+          description: New booking date after modification
+        newStartTime:
+          type: string
+          format: time
+          description: New start time after modification
+        newEndTime:
+          type: string
+          format: time
+          description: New end time after modification
+        previousAmountCents:
+          type: integer
+          description: Original booking amount in cents
+        newAmountCents:
+          type: integer
+          description: New booking amount in cents after modification
         priceDifferenceCents:
           type: integer
           description: Positive = price increase, negative = price decrease, 0 = no change
