@@ -12,6 +12,8 @@ Dependencies flow downward — later phases build on earlier ones.
 
 **Spec:** `.kiro/specs/phase-1-foundation-infrastructure/`
 
+**Requirements covered:** Req 20 (local development environment — Docker Compose, IDE integration), Req 22 (multi-environment deployment — Kubernetes namespaces, Terraform environments)
+
 **Scope:**
 - Terraform modules for DigitalOcean (DOKS, Managed PostgreSQL + PostGIS, Managed Redis, Spaces, Container Registry, VPC, DNS, Project)
 - Environment compositions (shared + production) with Terraform state management
@@ -32,6 +34,8 @@ Dependencies flow downward — later phases build on earlier ones.
 **Target repos:** `court-booking-platform-service`, `court-booking-transaction-service`, `court-booking-common`
 
 **Spec:** `.kiro/specs/phase-1b-service-scaffolding/`
+
+**Requirements covered:** Req 18 (database management and migrations — Flyway setup, schema creation), Req 20 (local development environment — Spring profiles, hot reload), Req 29 (API contracts — initial OpenAPI specification scaffolding)
 
 **Scope:**
 - Shared common library setup (`court-booking-common`) with Maven/GitHub Packages — DTOs, Kafka event classes, exceptions, utilities
@@ -105,7 +109,7 @@ Dependencies flow downward — later phases build on earlier ones.
 
 **Target repos:** `court-booking-transaction-service`
 
-**Requirements covered:** Req 8, Req 9, Req 10, Req 11, Req 12, Req 14
+**Requirements covered:** Req 8, Req 9, Req 10, Req 11, Req 11a (Stripe Connect onboarding), Req 12, Req 14
 
 **Scope:**
 - Customer booking flow: slot hold (5-min Redis lock) → payment → confirm
@@ -158,7 +162,7 @@ Dependencies flow downward — later phases build on earlier ones.
 
 **Target repos:** `court-booking-platform-service`, `court-booking-admin-web`
 
-**Requirements covered:** Req 15, Req 15a, Req 15b, Req 15c, Req 16, Req 17, Req 18, Req 19 (admin parts)
+**Requirements covered:** Req 15, Req 15a, Req 15b, Req 15c, Req 15d (admin UI security), Req 15e (global search, bulk operations), Req 16 (admin dashboard metrics), Req 17 (centralized logging — admin dashboard integration), Req 18 (database management — analytics migrations), Req 19 (admin/analytics performance), Req 28 (multi-language support), Req 29 (API contracts — OpenAPI maintenance), Req 30 (customer support system)
 
 **Scope:**
 - Court owner dashboard: today's bookings, revenue summary, occupancy rates, pending actions
@@ -174,8 +178,10 @@ Dependencies flow downward — later phases build on earlier ones.
 - Platform admin: dispute escalation, user suspend/unsuspend
 - Feature flag management
 - Kafka consuming: `analytics-events` topic
+- Multi-language support (Req 28): translations API, content management for Greek/English, Accept-Language header routing across all endpoints, translation workflow for court descriptions, notification templates, and error messages
+- OpenAPI specification maintenance and validation (Req 29)
 
-**Deliverable:** Court owners have a full admin dashboard. Platform admins can manage the system. Support workflow operational.
+**Deliverable:** Court owners have a full admin dashboard. Platform admins can manage the system. Support workflow operational. Full i18n support for Greek and English.
 
 ---
 
@@ -211,7 +217,7 @@ Dependencies flow downward — later phases build on earlier ones.
 
 **Target repos:** `court-booking-mobile-app`
 
-**Requirements covered:** Req 20–31 (mobile UX requirements)
+**Requirements covered:** Req 31 (mobile app client resilience, offline behavior, error handling), plus mobile UX requirements from the Customer User Journey and Court Owner Admin Journey sections of the master requirements document
 
 **Scope:**
 - Auth screens: OAuth login, biometric setup, terms acceptance
@@ -238,7 +244,7 @@ Dependencies flow downward — later phases build on earlier ones.
 
 **Target repos:** `court-booking-infrastructure`, `court-booking-qa`
 
-**Requirements covered:** Req 16 (observability), production hardening
+**Requirements covered:** Req 16 (system observability, monitoring, traceability), Req 17 (centralized logging and alerting — infrastructure), Req 20 (local development environment — validation and tuning), Req 21 (QA testing framework and automation), Req 22 (multi-environment deployment with service mesh)
 
 **Scope:**
 - Prometheus metrics collection (custom business metrics + JVM/Spring metrics)
@@ -250,6 +256,7 @@ Dependencies flow downward — later phases build on earlier ones.
 - Istio service mesh setup for staging/production (mTLS, traffic management, canary deployments)
 - Health check tuning (liveness, readiness, startup probes)
 - Graceful shutdown (WebSocket drain, in-flight request completion)
+- Payment reconciliation job: Quartz job (every 15 minutes) in Transaction Service to detect orphaned payments (payment captured but booking not created due to server error) and auto-create bookings or initiate refunds. Publishes push notification when resolved. (From Customer Journey Step 8a)
 - QA test suite: pytest functional tests, Locust stress tests, contract tests
 - Load testing and performance benchmarking
 - Backup restoration testing
@@ -263,9 +270,10 @@ Dependencies flow downward — later phases build on earlier ones.
 
 **Target repos:** All application repos
 
-**Requirements covered:** Req 24, Req 25, Req 26, Req 27, Req 9a (subscription billing), court ratings
+**Requirements covered:** Req 23 (advertisement system), Req 24, Req 25, Req 26, Req 27, Req 9a (subscription billing), court ratings (Req 2.19–2.20)
 
 **Scope:**
+- Advertisement system: feature-flagged ad placements, ad provider integration (Google AdMob, Facebook Audience Network), ad-free premium option
 - Open matches: creation, join requests (auto-accept/manual), player coordination, map markers
 - Waitlists: FIFO queue, auto-notify on cancellation, slot hold with timeout
 - Split payments: invitation, per-player payment tracking, deadline enforcement
@@ -273,6 +281,10 @@ Dependencies flow downward — later phases build on earlier ones.
 - Dynamic pricing: peak/off-peak multipliers, special date pricing
 - Court ratings and reviews (post-booking, one per booking)
 - Court owner subscription billing (Stripe Billing, trial management, tier upgrades)
+- Email digest option: daily summary email instead of individual notification emails (from Court Owner Journey Step 9)
+- FAQ / Help Center: searchable FAQ content for in-app and admin portal support hub (from Customer Journey Step 9 and Court Owner Journey Step 9)
+- Scheduled reports: configure automatic weekly/monthly email reports (from Court Owner Journey Step 8)
+- Court ownership transfer (Req 2.29–2.32)
 - Waitlist/match abuse detection
 - Promo code abuse detection
 

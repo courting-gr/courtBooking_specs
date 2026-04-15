@@ -6,7 +6,7 @@ Phase 6 implements the admin dashboard, analytics, support ticket system, and pl
 
 This phase builds on Phase 5 (Real-time & Notifications), which established WebSocket infrastructure, FCM push, SendGrid email, Web Push, notification preferences consumption, and booking reminder delivery. Phase 4 (Booking & Payments) established the booking lifecycle, payment processing, Stripe Connect, recurring bookings, bulk booking confirm/reject, iCal export, and Quartz-based scheduled jobs. Phase 3 (Court Management) established court CRUD, availability, pricing, cancellation tiers, court owner verification, audit logs, reminder rules, notification preferences, court defaults, bulk court pricing/availability operations, and the dashboard service (basic summary with court counts, verification status, Stripe status, and pending actions).
 
-**Master requirements coverage:** Req 15 (Analytics and Revenue Tracking), Req 15a (Court Owner Personal Settings and Profile Management — settings page integration), Req 15b (Smart Reminder Rules — configurable alerts), Req 15c (Court Owner Audit Logs — immutable trail), Req 15d (Admin UI Security and Data Protection), Req 15e (Global Search, Bulk Operations, Calendar Integration), Req 16 (Platform Observability — admin dashboard metrics), Req 17 (Support Ticket System), Req 18 (Platform Admin Operations), Req 19 (Performance, Scalability, and Caching — admin/analytics parts).
+**Master requirements coverage:** Req 15 (Analytics and Revenue Tracking), Req 15a (Court Owner Personal Settings and Profile Management — settings page integration), Req 15b (Smart Reminder Rules — configurable alerts), Req 15c (Court Owner Audit Logs — immutable trail), Req 15d (Admin UI Security and Data Protection), Req 15e (Global Search, Bulk Operations, Calendar Integration), Req 16 (Platform Observability — admin dashboard metrics), Req 17 (Support Ticket System), Req 18 (Platform Admin Operations), Req 19 (Performance, Scalability, and Caching — admin/analytics parts), Req 28 (Multi-Language Support — translations API, content management, Accept-Language routing), Req 30 (Customer Support System).
 
 **What already exists from previous phases:**
 - Dashboard service (`DashboardService`) with basic court summary, verification status, Stripe status, and pending actions (Phase 3). Phase 6 extends this with today's bookings, revenue summary, occupancy rates, and action-required counts.
@@ -644,3 +644,121 @@ Phase 6 introduces the following endpoints that need to be added to the OpenAPI 
    - **Output (success):** `204 No Content`
    - **Output (no photo):** `404 Not Found`
 4. WHEN a new profile photo is uploaded and a previous photo exists, THE Platform_Service SHALL delete the previous photo from DigitalOcean Spaces before storing the new one
+
+
+### Requirement 24: Admin Web Portal — Project Scaffolding and Infrastructure
+
+**User Story:** As a developer, I want a properly scaffolded React application with build tooling, environment configuration, API client generation, and CI/CD pipeline, so that the admin web portal can be developed, tested, and deployed efficiently.
+
+#### Acceptance Criteria
+
+1. THE Admin_Web_Portal SHALL be scaffolded using Vite as the build tool with React 18+, TypeScript 5+, and strict TypeScript configuration (`strict: true`, `noUncheckedIndexedAccess: true`)
+2. THE Admin_Web_Portal SHALL use the following core dependencies: React Router v6 for routing, Ant Design (antd) v5 for UI components, Axios for HTTP requests, React Query (TanStack Query) v5 for server state management and caching, i18next + react-i18next for internationalization, dayjs for date handling (matching Ant Design's date library)
+3. THE Admin_Web_Portal SHALL generate TypeScript API client types from the OpenAPI specifications (`openapi-platform-service.yaml` and `openapi-transaction-service.yaml`) using `openapi-typescript` or equivalent code generation tool. Generated types SHALL be committed to the repository and regenerated via an npm script (`npm run generate-api-types`)
+4. THE Admin_Web_Portal SHALL configure environment-specific API base URLs via `.env` files: `.env.local` (http://localhost:8080 for Platform Service, http://localhost:8081 for Transaction Service), `.env.staging` (staging URLs), `.env.production` (production URLs)
+5. THE Admin_Web_Portal SHALL include a Dockerfile for containerized deployment using multi-stage build: Node.js build stage → NGINX serve stage with gzip compression and SPA fallback routing
+6. THE Admin_Web_Portal SHALL include a GitHub Actions CI/CD pipeline with: lint (ESLint + Prettier), type check (`tsc --noEmit`), unit tests (Vitest), build, Docker image push to DigitalOcean Container Registry, and deployment to DOKS
+7. THE Admin_Web_Portal SHALL configure ESLint with `eslint-plugin-react-hooks`, `eslint-plugin-jsx-a11y` for accessibility linting, and Prettier for code formatting
+8. THE Admin_Web_Portal SHALL implement a centralized Axios instance with: automatic JWT Bearer token injection from in-memory storage, automatic 401 response interception with silent token refresh via `POST /api/auth/refresh`, request/response interceptors for error normalization, and base URL configuration from environment variables
+9. THE Admin_Web_Portal SHALL implement a WebSocket client using SockJS + STOMP that connects to Transaction Service's `/ws` endpoint for real-time booking status updates and in-app notifications. The client SHALL handle automatic reconnection with exponential backoff (1s, 2s, 4s, max 30s) and display a "Live updates paused" indicator when disconnected
+
+### Requirement 25: Admin Web Portal — Court Management Pages
+
+**User Story:** As a court owner, I want to manage my courts through the admin portal including creating, editing, deleting courts, managing images, availability, pricing, cancellation policies, and holidays, so that I can configure my courts for customer bookings.
+
+This requirement maps to the master requirements' Court Owner Admin Journey Step 5 (Court Management) and consumes existing APIs from Phase 3.
+
+#### Acceptance Criteria
+
+1. THE Admin_Web_Portal SHALL implement a Courts List page showing all courts owned by the authenticated court owner via `GET /api/courts/owner/me`, displayed as a table with columns: name, type, location type (indoor/outdoor badge), base price, confirmation mode, visibility status, and action buttons (edit, delete, toggle visibility)
+2. THE Admin_Web_Portal SHALL implement a Create Court form with fields for: name (Greek + English), description (Greek + English), court type (Tennis/Padel/Basketball/Football 5x5), location type (Indoor/Outdoor), address with map pin for coordinates, booking duration, max capacity, base price, confirmation mode (Instant/Manual with timeout hours), amenities multi-select, and image upload (drag-and-drop, max 10 images, JPEG/PNG/WebP, max 5MB each) via `POST /api/courts` and `POST /api/courts/{courtId}/images`
+3. THE Admin_Web_Portal SHALL implement an Edit Court form pre-populated with existing court data via `GET /api/courts/{courtId}`, supporting partial updates via `PUT /api/courts/{courtId}` with optimistic locking (`version` field). WHEN a concurrent modification conflict occurs (409 response), THE Admin_Web_Portal SHALL display a conflict resolution dialog showing the diff
+4. THE Admin_Web_Portal SHALL implement court deletion via `DELETE /api/courts/{courtId}` with a confirmation dialog. WHEN the court has future bookings (409 response), THE Admin_Web_Portal SHALL display the affected bookings and block deletion
+5. THE Admin_Web_Portal SHALL implement an Availability Management sub-page per court with: a visual weekly schedule editor for recurring availability windows (`GET/PUT /api/courts/{courtId}/availability/windows`), a calendar view for availability overrides (`GET/POST/DELETE /api/courts/{courtId}/availability/overrides`), and integration with the holiday calendar (`GET /api/holidays/calendar`, `POST /api/holidays/apply`)
+6. THE Admin_Web_Portal SHALL implement a Pricing Rules sub-page per court showing peak/off-peak multipliers by day and time via `GET /api/courts/{courtId}/pricing-rules` (existing Phase 3 API), with inline editing
+7. THE Admin_Web_Portal SHALL implement a Cancellation Policy sub-page per court showing time-based refund tiers via the existing cancellation tiers API, with add/edit/remove tier functionality
+8. THE Admin_Web_Portal SHALL implement a Holiday Calendar page accessible from the sidebar, showing national holidays (`GET /api/holidays/national`), custom holidays (`GET/POST/PUT/DELETE /api/holidays/custom`), and bulk holiday application to courts (`POST /api/holidays/apply`) with conflict detection
+9. THE Admin_Web_Portal SHALL implement bulk court operations: multi-select courts from the list → apply pricing changes, availability windows, or visibility toggle via `POST /api/courts/bulk-update` and `POST /api/courts/bulk/visibility`. Partial failures SHALL show per-court success/failure status with retry for failed items only
+
+### Requirement 26: Admin Web Portal — Booking Management Pages
+
+**User Story:** As a court owner, I want to view, manage, and create bookings through the admin portal including a calendar view, pending confirmation queue, manual booking creation, and booking detail with full audit trail, so that I can manage my daily court operations.
+
+This requirement maps to the master requirements' Court Owner Admin Journey Step 6 (Booking Management) and consumes existing APIs from Phase 4.
+
+#### Acceptance Criteria
+
+1. THE Admin_Web_Portal SHALL implement a Bookings List page showing all bookings for the court owner's courts via `GET /api/bookings` (Transaction Service), displayed as a filterable table with columns: date, time, court name, customer name (masked), status (color-coded: Confirmed=green, Pending=yellow, Cancelled=red, Manual=blue), payment status, and action buttons
+2. THE Admin_Web_Portal SHALL implement a Booking Calendar View using Ant Design's Calendar or a full-calendar library, showing daily/weekly/monthly views of all bookings across all courts. Bookings SHALL be color-coded by status and filterable by court, court type, status, and payment status
+3. THE Admin_Web_Portal SHALL implement a Pending Bookings Queue page showing bookings with status `PENDING_CONFIRMATION` via `GET /api/bookings/pending` (Transaction Service), with: customer details, requested time, payment held amount, countdown timer showing time until auto-cancellation, and Confirm/Reject buttons with optional message via `POST /api/bookings/{bookingId}/confirm` and `POST /api/bookings/{bookingId}/reject`. Bulk confirm/reject SHALL be supported via `POST /api/bookings/bulk-action`
+4. THE Admin_Web_Portal SHALL implement a Manual Booking Creation form with: court selector, date/time picker (respecting availability windows), optional customer name/phone/email, optional notes, and recurring booking toggle (weekly repeat with end date) via `POST /api/bookings/manual` and `POST /api/bookings/recurring` (Transaction Service)
+5. THE Admin_Web_Portal SHALL implement a Booking Detail page showing: full booking information, customer details (with PII masking in summary, full details on click with audit log entry), payment timeline (authorized → captured → transferred → paid out), complete status change history with timestamps and actor, and action buttons for: cancel booking (`POST /api/bookings/{bookingId}/cancel`), mark as paid externally (`POST /api/bookings/{bookingId}/mark-paid`), flag no-show (`POST /api/bookings/{bookingId}/no-show`), and modify booking (`PUT /api/bookings/{bookingId}/modify`)
+6. THE Admin_Web_Portal SHALL implement iCal export functionality via `GET /api/bookings/calendar/ical` (Transaction Service) with a download button on the calendar view
+7. THE Admin_Web_Portal SHALL receive real-time booking status updates via WebSocket (STOMP subscription to `/topic/bookings/{courtId}`) and update the booking list, calendar, and pending queue in real-time without requiring page refresh
+
+### Requirement 27: Admin Web Portal — Stripe Connect Onboarding and Verification Flow
+
+**User Story:** As a court owner, I want to complete Stripe Connect onboarding and business verification through the admin portal, so that I can accept customer payments and have my courts publicly visible.
+
+This requirement maps to the master requirements' Court Owner Admin Journey Steps 1-2 (Registration & Verification, Stripe Connect Onboarding) and consumes existing APIs from Phases 2-4.
+
+#### Acceptance Criteria
+
+1. THE Admin_Web_Portal SHALL display a prominent onboarding banner when the court owner's Stripe Connect status is not `ACTIVE` (checked via `GET /api/users/me` profile data including `stripeConnectStatus`). The banner SHALL show: current status (NOT_STARTED, PENDING, RESTRICTED), a "Complete Payment Setup" or "Resume Setup" button that initiates Stripe hosted onboarding via `POST /api/payments/stripe-connect/onboard` (Transaction Service), and a message explaining that customer bookings are blocked until Stripe Connect is active
+2. THE Admin_Web_Portal SHALL display a verification status banner when the court owner is not verified (checked via `GET /api/verification`). The banner SHALL show: current status (not submitted, PENDING_REVIEW, REJECTED with reason), a "Submit Verification" or "Re-submit" button that opens the verification form, and a message explaining that courts remain hidden until verified
+3. THE Admin_Web_Portal SHALL implement a Verification Submission form with: business name, tax ID (AFM), business type (Sole Proprietor/Company/Association), business address, and proof document upload (PDF/JPEG/PNG, max 10MB) via `POST /api/verification`. WHEN a previous submission was rejected, THE form SHALL display the rejection reason and pre-fill fields from the previous submission
+4. THE Admin_Web_Portal SHALL implement a Stripe Connect Status page (accessible from Settings) showing: account status, payout schedule configuration (`PUT /api/payments/stripe-connect/payout-schedule` — Transaction Service), payout history (`GET /api/payments/stripe-connect/payouts` — Transaction Service), and next scheduled payout date/amount
+5. THE Admin_Web_Portal SHALL implement conditional UI rendering based on court owner sub-states: unverified owners see a "Verification Required" banner on all pages, Stripe-not-connected owners see a "Payment Setup Required" banner, and both banners include direct action links. Courts list SHALL show a "Hidden — pending verification" or "Hidden — Stripe not connected" badge on affected courts
+
+### Requirement 28: Admin Web Portal — Real-Time Notifications and WebSocket Integration
+
+**User Story:** As a court owner, I want to receive real-time notifications in the admin portal for new bookings, cancellations, and other events, so that I can respond quickly to business activity.
+
+This requirement consumes the WebSocket infrastructure from Phase 5 and the notification APIs from Transaction Service.
+
+#### Acceptance Criteria
+
+1. THE Admin_Web_Portal SHALL implement a notification bell icon in the top navigation bar showing the count of unread notifications fetched via `GET /api/notifications?unreadOnly=true` (Transaction Service)
+2. THE Admin_Web_Portal SHALL implement a notification dropdown panel showing the 20 most recent notifications with: notification type icon, title, body text, timestamp (relative: "2 minutes ago"), and read/unread indicator. Clicking a notification SHALL mark it as read via `POST /api/notifications/{notificationId}/read` and navigate to the relevant page (e.g., booking detail for booking notifications)
+3. THE Admin_Web_Portal SHALL subscribe to WebSocket topics for real-time notification delivery: `/user/queue/notifications` for personal notifications, `/topic/bookings/{courtId}` for each owned court's booking updates. New notifications SHALL trigger a browser notification (if Web Push permission granted) and update the notification bell count
+4. THE Admin_Web_Portal SHALL implement Web Push notification registration via `POST /api/notifications/device` (Transaction Service) with platform `WEB` using the W3C Push API with VAPID keys, so court owners receive push notifications even when the browser tab is closed
+5. THE Admin_Web_Portal SHALL display a subtle "Live updates paused" indicator in the header when the WebSocket connection is disconnected, and automatically reconnect with exponential backoff. On reconnect, THE Admin_Web_Portal SHALL fetch a full data refresh for the currently visible page
+
+### Requirement 29: Admin Web Portal — Error Handling and UX Patterns
+
+**User Story:** As a court owner, I want consistent error handling, loading states, and feedback across all admin portal pages, so that I have a reliable and predictable user experience.
+
+This requirement maps to the master requirements' "Admin UI Error Handling Principles" section.
+
+#### Acceptance Criteria
+
+1. THE Admin_Web_Portal SHALL implement consistent form validation using Ant Design's Form component with: inline field-level validation with clear error messages, server-side validation error mapping (400 responses with `errors[]` array mapped to specific form fields), and form state preservation on validation failure (user input SHALL NOT be lost)
+2. THE Admin_Web_Portal SHALL implement a centralized error handling strategy: network errors (timeout, 5xx) show an Ant Design notification (toast) with "Something went wrong" message and a "Retry" button, client errors (4xx) show the specific error message from the API `message` field, and 401 responses trigger silent token refresh with automatic request retry
+3. THE Admin_Web_Portal SHALL implement loading states using Ant Design's Skeleton component for all data-fetching pages, Spin component for action buttons during API calls, and Progress component for file uploads. Loading indicators SHALL appear after 300ms delay (perceived-as-instant threshold)
+4. THE Admin_Web_Portal SHALL implement optimistic UI updates for: court visibility toggle (update UI immediately, revert on failure), reminder rule enable/disable toggle, and notification mark-as-read. All optimistic updates SHALL revert with an error toast if the server request fails
+5. THE Admin_Web_Portal SHALL handle rate limiting (429 responses) by: reading the `Retry-After` header, displaying a countdown timer in an Ant Design Alert component, disabling the action button until the timer expires, and never silently dropping user actions
+6. THE Admin_Web_Portal SHALL implement React Query's stale-while-revalidate pattern for all list pages: show cached data immediately, fetch fresh data in background, and update UI seamlessly when fresh data arrives. Cache invalidation SHALL be triggered by mutations (e.g., creating a court invalidates the courts list cache)
+7. THE Admin_Web_Portal SHALL implement a 404 Not Found page for unknown routes and a generic error fallback page for unhandled errors, both with navigation back to the dashboard
+
+
+### Requirement 30: Multi-Language Support (i18n)
+
+**User Story:** As a platform user (customer or court owner), I want the platform to serve content in my preferred language (Greek or English), so that I can interact with the system in my native language.
+
+This requirement maps to master Req 28 (Multi-Language Support). Previous phases established partial i18n support: Phase 3 stores court descriptions in Greek and English (`name_el`, `name_en`, `description_el`, `description_en`), Phase 5 implements notification template localization, and Phase 2 stores user language preference (`users.language`). Phase 6 completes the i18n implementation with a translations API, content management workflow, and consistent Accept-Language routing across all endpoints.
+
+#### Acceptance Criteria
+
+1. THE Platform_Service SHALL route all API responses through the user's preferred language, determined by: (a) the `Accept-Language` HTTP header if present (`el` or `en`), (b) the authenticated user's `language` preference from the `users` table, or (c) English (`en`) as the default fallback
+2. THE Platform_Service SHALL serve court data (name, description) in the requested language, falling back to the other language if the requested translation is not available, and falling back to the raw field value if neither translation exists
+3. THE Platform_Service SHALL serve all API error messages in the requested language using Spring's `MessageSource` with `messages_en.properties` and `messages_el.properties` resource bundles (already scaffolded in Phase 3)
+4. THE Platform_Service SHALL expose a translations management API for PLATFORM_ADMIN users:
+   - `GET /api/admin/translations?namespace={namespace}&language={language}` — list translations for a namespace
+   - `PUT /api/admin/translations/{key}` — create or update a translation entry
+   - The `translations` table (created in Phase 1b schema) SHALL store: `id`, `namespace` (e.g., `court_types`, `booking_statuses`, `error_messages`), `key`, `language` (`el` or `en`), `value`, `created_at`, `updated_at`
+5. THE Platform_Service SHALL use the `translations` table for dynamic content that may change without code deployment: court type display names, booking status labels, notification template strings, and UI labels for the admin portal
+6. THE Admin_Web_Portal SHALL support language switching between Greek and English via a language selector in the top navigation bar, persisting the choice to the user's profile preference
+7. THE Admin_Web_Portal SHALL use a client-side i18n library (e.g., `react-i18next`) with translation bundles loaded from the Platform Service translations API, with local fallback bundles for offline resilience
+8. THE Platform_Service SHALL include the `Content-Language` response header on all API responses indicating the language of the response body
+9. WHEN a court owner creates or updates a court, THE Platform_Service SHALL accept both `el` and `en` translations for name and description fields, storing them in the existing bilingual columns (`name_el`, `name_en`, `description_el`, `description_en`)
+10. THE Platform_Service SHALL serve notification templates in the user's preferred language, using the notification localization infrastructure established in Phase 5 (SendGrid dynamic templates with language variants, FCM localized payloads)
