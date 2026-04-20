@@ -1,0 +1,845 @@
+# Implementation Plan: Phase 6 — Admin, Analytics & Support
+
+## Overview
+
+This plan implements Phase 6 across three codebases: `court-booking-platform-service` (analytics API, support tickets, feature flags, admin operations, global search, GDPR export, session management, profile photo, CSRF, rate limiting, analytics events consumer, translations API, bulk visibility, auth event logging), `court-booking-transaction-service` (reminder rule evaluation job, internal booking search API, internal dispute API), and `court-booking-admin-web` (React 18 + TypeScript + Ant Design 5 + React Router v6 + TanStack Query v5 + react-i18next + Recharts + STOMP WebSocket admin portal). Tasks are ordered so each builds on the previous, with backend APIs implemented before the frontend pages that consume them. Every acceptance criterion from all 30 requirements is traceable to at least one task.
+
+## Tasks
+
+- [ ] 1. Platform Service — Database Migrations and Read Replica Configuration
+  - [ ] 1.1 Create Flyway migration V8__phase6_schema_changes.sql
+    - ALTER `reminder_rules.rule_type` CHECK constraint to new canonical types: `UNPAID_BOOKING`, `PAYMENT_HELD_NOT_CAPTURED`, `PENDING_CONFIRMATION`, `NO_CONTACT_MANUAL`, `LOW_OCCUPANCY`
+    - ADD `PAYOUT_ISSUES` to `support_tickets.category` CHECK constraint
+    - CREATE `platform.admin_audit_logs` table (`id UUID PK`, `admin_id UUID NOT NULL FK → users(id)`, `target_user_id UUID NOT NULL FK → users(id)`, `action VARCHAR(50) NOT NULL`, `reason TEXT`, `metadata JSONB`, `ip_address VARCHAR(45)`, `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`) with indexes on `admin_id`, `target_user_id`, `created_at`. Append-only — no UPDATE or DELETE
+    - CREATE cross-schema view `platform.v_recent_notifications` on `transaction.notifications` returning `id`, `user_id`, `type`, `message`, `created_at`, `read` filtered to last 5 per user. GRANT SELECT to `platform_service_role`
+    - ADD `tsvector` columns (`search_vector_el`, `search_vector_en`) and GIN indexes on `platform.courts` for `name_el`, `name_en`, `description_el`, `description_en`, `address`
+    - CREATE trigger `courts_search_vector_trigger` to keep tsvector columns in sync on INSERT/UPDATE
+    - Backfill existing courts with tsvector data
+    - _Requirements: 1.10, 5.4, 6.1, 9.8, 12.6_
+  - [ ] 1.2 Implement ReadReplicaRoutingDataSource and DataSourceConfig
+    - Create `config/ReadReplicaRoutingDataSource.java` extending `AbstractRoutingDataSource` that routes by `TransactionSynchronizationManager.isCurrentTransactionReadOnly()`
+    - Create `config/DataSourceConfig.java` wiring primary and replica DataSources with HikariCP pools (primary: max 10, replica: max 15 read-only)
+    - Add `spring.datasource.primary.*` and `spring.datasource.replica.*` configuration to `application.yml`
+    - For local profile, point both datasources to the same PostgreSQL instance
+    - _Requirements: 2.6, 3.2, 4.5, 11.5_
+
+- [ ] 2. Platform Service — CSRF, Rate Limiting, Auth Event Logging, and Security Filters
+  - [ ] 2.1 Implement CsrfTokenController and CsrfValidationFilter
+    - Create `adapter/in/web/CsrfTokenController.java`: `GET /api/auth/csrf-token` generates random UUID token, stores in `HttpSession` with `setMaxInactiveInterval(1800)` (30 min), returns `{ csrfToken }`
+    - Create `adapter/in/web/security/CsrfValidationFilter.java` (extends `OncePerRequestFilter`): validates `X-CSRF-Token` header against session token for POST/PUT/DELETE/PATCH
+    - Skip CSRF for: `/internal/`, `/api/auth/oauth/`, `/api/auth/refresh`, `/api/auth/csrf-token`, `/actuator/`, and requests without `Origin` header (non-browser)
+    - Insert filter AFTER `JwtAuthenticationFilter` in `SecurityConfig.securityFilterChain()`. Filter ordering: `RateLimitFilter → JwtAuthenticationFilter → CsrfValidationFilter → SuspendedUserFilter → Controller`
+    - Return `403 { error: "CSRF_VALIDATION_FAILED" }` on mismatch
+    - _Requirements: 14.1_
+  - [ ] 2.2 Implement RateLimitRedisAdapter and extend RateLimitFilter
+    - Create `application/port/out/RateLimitPort.java` interface with `isAllowed(key, limit, windowSeconds)` and `getRetryAfterSeconds(key)`
+    - Create `adapter/out/redis/RateLimitRedisAdapter.java` using Redis sorted sets (sliding window counter)
+    - Extend existing `RateLimitFilter` in `adapter/in/web/security/` to distinguish read (100/min) vs write (30/min) per user
+    - Redis key pattern: `rate-limit:{userId}:{read|write}` with 60-second TTL
+    - Return `429 Too Many Requests` with `Retry-After` header and `{ error: "RATE_LIMIT_EXCEEDED", retryAfterSeconds }` body
+    - _Requirements: 14.10, 14.11, 14.14_
+  - [ ] 2.3 Implement admin portal auth event logging
+    - Create `application/port/out/AuthEventLogPort.java` with `logAuthEvent(userId, eventType, ipAddress, userAgent)`
+    - Create `adapter/out/persistence/AuthEventLogPersistenceAdapter.java` writing to `court_owner_audit_logs` with action types: `LOGIN`, `LOGOUT`, `SESSION_TIMEOUT`, `SESSION_EXTENDED`
+    - Integrate into auth endpoints: `POST /api/auth/login` (log LOGIN), `POST /api/auth/logout` (log LOGOUT), `GET /api/auth/csrf-token` session extension (log SESSION_EXTENDED)
+    - Extract IP from `X-Forwarded-For` header, User-Agent from `User-Agent` header
+    - _Requirements: 14.9_
+  - [ ]* 2.4 Write unit tests for CsrfValidationFilter, RateLimitRedisAdapter, and auth event logging
+    - Test CSRF token validation, exempt paths, Origin header check
+    - Test sliding window rate limiting behavior, retry-after calculation
+    - Test auth event logging captures IP + user agent correctly
+    - _Requirements: 14.1, 14.10, 14.9_
+
+- [ ] 3. Checkpoint — Ensure migrations and security filters pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 4. Platform Service — Analytics API (Revenue, Usage, Heatmap, Export)
+  - [ ] 4.1 Create analytics domain models and ports
+    - Create `application/port/in/AnalyticsQuery.java` self-validating command record (validates date range ≤ 365 days, from ≤ to)
+    - Create response records in `domain/model/`: `RevenueAnalyticsResult`, `UsageAnalyticsResult`, `HeatmapResult`
+    - Create incoming ports in `application/port/in/`: `GetRevenueAnalyticsUseCase`, `GetUsageAnalyticsUseCase`, `GetOccupancyHeatmapUseCase`, `ExportAnalyticsUseCase`
+    - Create outgoing port `application/port/out/AnalyticsReadPort` with methods: `queryRevenue()`, `queryUsage()`, `queryHeatmap()`, `queryTodayBookings()`, `queryMonthlyRevenue()`, `queryOccupancy()`
+    - Create `application/port/out/ExportRateLimitPort` for export rate limiting (10/day)
+    - _Requirements: 2.1, 3.1, 4.1_
+  - [ ] 4.2 Implement AnalyticsPersistenceAdapter (read replica queries)
+    - Create `adapter/out/persistence/AnalyticsPersistenceAdapter.java` implementing `AnalyticsReadPort`
+    - Revenue query: native SQL aggregating `court_owner_net_cents`, `platform_fee_cents` from `transaction.bookings` cross-schema view, grouped by court
+    - Usage query: aggregate booking counts by `EXTRACT(DOW FROM date)` and `EXTRACT(HOUR FROM start_time)`
+    - Heatmap query: GROUP BY day-of-week (MONDAY-SUNDAY) and hour (0-23), compute occupancy per cell
+    - Occupancy calculation: ratio of booked minutes to available minutes (from `availability_windows` minus `availability_overrides`)
+    - Previous period comparison: compute same metrics for equivalent preceding period, return percentage changes
+    - No-show counts: aggregate from `bookings.no_show = true` within date range
+    - All methods annotated with `@Transactional(readOnly = true)` to route to replica
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 3.1, 3.2, 3.3, 3.4_
+  - [ ] 4.3 Implement AnalyticsService and ExportService
+    - Create `application/service/AnalyticsService.java` implementing revenue, usage, heatmap use cases with court ownership validation (`courtId` must belong to authenticated owner)
+    - Create `application/service/ExportService.java` implementing `ExportAnalyticsUseCase`
+    - CSV export: generate file with columns per Req 4.7 (date, courtName, courtType, bookingCount, confirmedCount, cancelledCount, noShows, revenueGrossCents, platformFeesCents, revenueNetCents, occupancyRate)
+    - PDF export: generate formatted report using OpenPDF with revenue summary, court breakdown table
+    - Rate limit: 10 exports/day via `ExportRateLimitPort` (Redis key `export-limit:{courtOwnerId}`, 24h TTL)
+    - Record `DATA_EXPORTED` audit log entry on each export via `AuditLogPort`
+    - _Requirements: 2.1, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7_
+  - [ ] 4.4 Create AnalyticsController with REST endpoints
+    - Create `adapter/in/web/AnalyticsController.java`:
+      - `GET /api/analytics/revenue` — revenue data with `from`, `to`, `courtId`, `courtType` query params
+      - `GET /api/analytics/usage` — usage/booking trend data
+      - `GET /api/analytics/heatmap` — occupancy heatmap matrix (new endpoint, add to OpenAPI spec)
+      - `GET /api/analytics/export?format=csv|pdf` — file download with `Content-Disposition` header
+    - Validate court ownership for `courtId` filter, return 403 if not owner
+    - Return 400 for date range > 365 days with `{ error: "INVALID_DATE_RANGE" }`
+    - Return 429 for export rate limit exceeded with `{ error: "EXPORT_RATE_LIMIT_EXCEEDED", maxExportsPerDay: 10 }`
+    - _Requirements: 2.1, 3.1, 4.1_
+  - [ ]* 4.5 Write property tests for analytics (P1, P2, P3, P4, P14, P16)
+    - **Property 1: Occupancy Rate Bounded Range** — verify rate ∈ [0.0, 1.0]
+    - **Validates: Requirements 1.7, 2.5, 3.4, 20.4**
+    - **Property 2: Revenue Decomposition Invariant** — verify gross = fees + net
+    - **Validates: Requirements 2.1, 20.3**
+    - **Property 3: Date Range Validation** — verify > 365 days rejected, ≤ 365 accepted
+    - **Validates: Requirements 2.2, 4.6**
+    - **Property 4: Comparison Period Symmetry** — verify comparison period length equals request period length
+    - **Validates: Requirements 2.3, 20.11**
+    - **Property 14: Analytics Additivity** — verify booking count additivity across sub-periods
+    - **Validates: Requirements 20.1**
+    - **Property 16: CSV Export Round-Trip** — export CSV, parse, verify totals match
+    - **Validates: Requirements 20.5**
+  - [ ] 4.6 Write unit tests for AnalyticsService and ExportService
+    - Test known data → expected response structure for revenue, usage, heatmap
+    - Test CSV column structure, PDF generation
+    - Test export rate limiting behavior (10/day limit, 429 response)
+    - _Requirements: 2.1, 4.1_
+
+- [ ] 5. Platform Service — Dashboard Enhancement
+  - [ ] 5.1 Extend DashboardService with Phase 6 fields
+    - Extend `DashboardResult` in `application/service/DashboardService.java` with: `todayBookings`, `pendingConfirmations`, `revenueThisMonthCents`, `nextPayoutDate/Amount`, `occupancyRateToday`
+    - Add `ActionRequired` record: `pendingBookings`, `unpaidManualBookings`, `expiringPromos` (=0 until Phase 10), `reminderAlerts`
+    - Add `RecentNotification` list from `v_recent_notifications` cross-schema view (5 most recent per user)
+    - Query today's bookings and pending confirmations from `transaction.bookings` cross-schema view filtered by court owner's courts and today's date in court timezone
+    - Compute revenue this month: aggregate `court_owner_net_cents` from confirmed/completed bookings for current calendar month via read replica
+    - Integrate `StripeConnectPayoutPort` for next payout data (graceful degradation: return null if Stripe unavailable)
+    - Compute occupancy rate: ratio of booked slots to total available slots across visible courts for today
+    - Maintain existing Redis cache with 1-minute TTL keyed by `dashboard:{courtOwnerId}`. Compute directly when cache unavailable
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.10_
+  - [ ]* 5.2 Write property test for dashboard court summary (P15)
+    - **Property 15: Court Summary Partition Invariant** — verify total = visible + hidden
+    - **Validates: Requirements 20.2**
+  - [ ] 5.3 Write unit tests for DashboardService
+    - Test known data → expected dashboard response
+    - Test cache hit/miss behavior, graceful degradation when Stripe API unavailable
+    - _Requirements: 1.1, 1.5_
+
+- [ ] 6. Platform Service — Audit Log Query API
+  - [ ] 6.1 Create AuditLogController and QueryAuditLogUseCase
+    - Create `application/port/in/QueryAuditLogUseCase.java` and `application/service/AuditLogQueryService.java`
+    - Create `adapter/in/web/AuditLogController.java`:
+      - `GET /api/audit-logs` — court owner's own logs with pagination (`page`, `size` max 100), date range (`from`, `to`), `action` type filter, `courtId` filter, `sort` (default `createdAt,desc`)
+      - Response: paginated `{ content: [{ id, courtId, action, entityType, entityId, changes, createdAt }], page, size, totalElements, totalPages }`. Note: `ipAddress` and `userAgent` NOT returned to court owners
+    - Create `adapter/in/web/AdminAuditLogController.java`:
+      - `GET /api/admin/audit-logs?courtOwnerId={uuid}` — admin view including hashed `ipAddress` field
+    - Validate court owners can only view their own logs (403 for others)
+    - Support filtering by action type: `COURT_CREATED`, `COURT_UPDATED`, `COURT_DELETED`, `PRICING_UPDATED`, `AVAILABILITY_UPDATED`, `CANCELLATION_POLICY_UPDATED`, `SETTINGS_UPDATED`, `DATA_EXPORTED`, `VERIFICATION_SUBMITTED`, `DATA_EXPORT_REQUESTED`, `COURT_VISIBILITY_TOGGLED`, `CUSTOMER_DATA_ACCESSED`, `SESSION_REVOKED`
+    - Enforce append-only: no UPDATE or DELETE operations exposed. Retain entries for minimum 2 years
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6_
+  - [ ]* 6.2 Write property tests for audit log (P5, P6)
+    - **Property 5: Audit Log Filter Correctness** — verify all returned entries within date range
+    - **Validates: Requirements 5.1, 20.10**
+    - **Property 6: Audit Log Isolation** — verify each court owner sees only their own
+    - **Validates: Requirements 5.3**
+
+- [ ] 7. Platform Service — Support Ticket System
+  - [ ] 7.1 Create support ticket domain model and ports
+    - Create `domain/model/SupportTicket.java` entity with `transitionTo()` enforcing state machine: OPEN→IN_PROGRESS, IN_PROGRESS→WAITING_ON_USER, IN_PROGRESS→RESOLVED, WAITING_ON_USER→IN_PROGRESS, RESOLVED→CLOSED, any→CLOSED (admin only)
+    - Create `domain/model/SupportMessage.java`, `domain/model/SupportAttachment.java` records
+    - Create incoming ports in `application/port/in/`: `CreateSupportTicketUseCase`, `ListSupportTicketsQuery`, `GetSupportTicketQuery`, `AddSupportMessageUseCase`, `UploadSupportAttachmentUseCase`, `AssignSupportTicketUseCase`, `UpdateSupportTicketStatusUseCase`, `GetSupportMetricsQuery`
+    - Create outgoing ports in `application/port/out/`: `SupportTicketPersistencePort`, `SupportMessagePersistencePort`, `SupportAttachmentPersistencePort`
+    - _Requirements: 6.1, 6.9, 7.1_
+  - [ ] 7.2 Implement SupportTicketPersistenceAdapter and SupportTicketService
+    - Create `adapter/out/persistence/SupportTicketPersistenceAdapter.java` implementing ticket, message, attachment persistence via JPA
+    - Create `application/service/SupportTicketService.java`:
+      - Create ticket: status=OPEN, priority=NORMAL, validate category enum including PAYOUT_ISSUES
+      - Add message: auto-transition OPEN→IN_PROGRESS when agent/admin adds message (AC 5), WAITING_ON_USER→IN_PROGRESS when user adds message (AC 6)
+      - Assign ticket: validate assignee is PLATFORM_ADMIN (AC 8)
+      - Update status: validate transition per state machine, set `resolved_at` on RESOLVED (AC 10)
+      - Upload attachments to DO Spaces under `support/{ticketId}/{messageId}/{uuid}.{ext}` (max 5 per message, max 10MB, JPEG/PNG/PDF/TXT/LOG)
+      - Support inline attachment upload during message creation (multipart/form-data with body + attachments array)
+      - Publish `NOTIFICATION_REQUESTED` event on status change via `NotificationEventPublisherPort` (AC 11)
+    - Create `application/service/SupportMetricsService.java`:
+      - Compute avg response time: time between ticket creation and first non-creator message (AC 7.2)
+      - Compute avg resolution time: time between creation and `resolved_at` (AC 7.3)
+      - Aggregate tickets by category and priority
+    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 7.1, 7.2, 7.3_
+  - [ ] 7.3 Create SupportTicketController and AdminSupportController
+    - Create `adapter/in/web/SupportTicketController.java`:
+      - `POST /api/support/tickets` — create ticket (accepts multipart/form-data with optional attachments)
+      - `GET /api/support/tickets` — list user's tickets with `status`, `page`, `size`, `sort` params
+      - `GET /api/support/tickets/{ticketId}` — ticket detail with full message thread and attachments (403 if not owner or admin)
+      - `POST /api/support/tickets/{ticketId}/messages` — add message (multipart with optional attachments)
+      - `POST /api/support/tickets/{ticketId}/messages/{messageId}/attachments` — separate attachment upload after message creation
+    - Create `adapter/in/web/AdminSupportController.java`:
+      - `PUT /api/support/tickets/{ticketId}/assign` — assign ticket (PLATFORM_ADMIN only)
+      - `PUT /api/support/tickets/{ticketId}/status` — update status (PLATFORM_ADMIN and SUPPORT_AGENT)
+      - `GET /api/admin/support/metrics` — support metrics with `from`, `to` params (PLATFORM_ADMIN only)
+    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.7, 6.8, 6.9, 7.1, 7.2, 7.3, 7.4_
+  - [ ]* 7.4 Write property tests for support tickets (P7, P8)
+    - **Property 7: Support Ticket State Machine** — verify only valid transitions succeed
+    - **Validates: Requirements 6.9, 20.7**
+    - **Property 8: Support Ticket Isolation** — verify each user sees only their own tickets
+    - **Validates: Requirements 6.2**
+  - [ ]* 7.5 Write unit tests for SupportTicketService and SupportMetricsService
+    - Test status transitions, message creation, attachment validation (format, size, count)
+    - Test metrics computation (avg response time, avg resolution time, category/priority breakdown)
+    - _Requirements: 6.1, 7.1_
+
+- [ ] 8. Checkpoint — Ensure analytics, dashboard, audit log, and support ticket tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 9. Platform Service — Feature Flag Management
+  - [ ] 9.1 Implement feature flag ports, service, Redis cache, and controllers
+    - Create `application/port/out/FeatureFlagPersistencePort.java` and `application/port/out/FeatureFlagCachePort.java`
+    - Create `adapter/out/persistence/FeatureFlagPersistenceAdapter.java` and `adapter/out/redis/FeatureFlagCacheRedisAdapter.java` (5-min TTL)
+    - Create `application/service/FeatureFlagService.java`: list all flags, get by key (cache-first), create flag (validate key format: 3-100 chars, uppercase with underscores, 409 on duplicate), update flag (invalidate cache), delete flag (invalidate cache)
+    - Create `adapter/in/web/AdminFeatureFlagController.java`:
+      - `GET /api/admin/feature-flags` — list all flags (PLATFORM_ADMIN only)
+      - `POST /api/admin/feature-flags` — create flag (PLATFORM_ADMIN only)
+      - `PUT /api/admin/feature-flags/{flagKey}` — update enabled status (PLATFORM_ADMIN only)
+      - `DELETE /api/admin/feature-flags/{flagKey}` — delete flag (PLATFORM_ADMIN only)
+    - Create `adapter/in/web/FeatureFlagController.java`:
+      - `GET /api/feature-flags/{flagKey}` — public endpoint returning `{ flagKey, enabled }`
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7_
+  - [ ]* 9.2 Write property test for feature flags (P9)
+    - **Property 9: Feature Flag Read-After-Write Consistency** — update then read; verify consistency
+    - **Validates: Requirements 8.2, 20.9**
+
+- [ ] 10. Platform Service — Admin User Management
+  - [ ] 10.1 Implement user management ports, service, and controller
+    - Create `application/port/out/UserManagementPort.java` with search, detail, status update, token invalidation methods
+    - Create `application/service/AdminUserService.java`:
+      - List users: paginated, filterable by `role`, `status` (ACTIVE/SUSPENDED/DELETED), `search` (name or email), sortable
+      - Get user detail: profile + verification history + Stripe Connect status + booking stats + support ticket history
+      - Suspend user: set status=SUSPENDED, invalidate all refresh tokens (prevents API access after current token expiry), publish `NOTIFICATION_REQUESTED` with suspension reason, record in `admin_audit_logs`
+      - Unsuspend user: set status=ACTIVE, publish `NOTIFICATION_REQUESTED` with reactivation notice, record in `admin_audit_logs`
+      - Validate: 422 if already suspended/not suspended
+    - Create `adapter/in/web/AdminUserController.java`:
+      - `GET /api/admin/users` — paginated user list
+      - `GET /api/admin/users/{userId}` — full user detail
+      - `POST /api/admin/users/{userId}/suspend` — suspend with `{ reason: string (10-500 chars) }`
+      - `POST /api/admin/users/{userId}/unsuspend` — unsuspend
+    - All endpoints PLATFORM_ADMIN only
+    - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8_
+  - [ ]* 10.2 Write unit tests for AdminUserService
+    - Test suspend/unsuspend flows, token invalidation, notification publishing, admin audit log recording
+    - _Requirements: 9.2, 9.5_
+
+- [ ] 11. Platform Service — Dispute Escalation Proxy
+  - [ ] 11.1 Implement dispute proxy to Transaction Service internal API
+    - Create `application/port/out/TransactionServiceDisputePort.java` with methods for listing disputes, getting detail, adding notes
+    - Create `adapter/out/http/TransactionServiceDisputeHttpClient.java` calling Transaction Service internal endpoints (`GET /internal/disputes`, `GET /internal/disputes/{disputeId}`, `POST /internal/disputes/{disputeId}/notes`)
+    - Create `adapter/in/web/AdminDisputeController.java`:
+      - `GET /api/admin/disputes` — paginated dispute list with `status`, `page`, `size`, `sort` params
+      - `GET /api/admin/disputes/{disputeId}` — full dispute context including booking details, payment timeline, evidence, audit log entries
+      - `POST /api/admin/disputes/{disputeId}/notes` — add admin note with `{ note: string (10-2000 chars), visibleToParties: boolean }`
+    - Include relevant `court_owner_audit_logs` entries as evidence in dispute records (AC 10.5)
+    - All endpoints PLATFORM_ADMIN only
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
+
+- [ ] 12. Platform Service — Platform-Wide Analytics
+  - [ ] 12.1 Implement GetPlatformAnalyticsQuery and AdminAnalyticsController
+    - Create `application/port/in/GetPlatformAnalyticsQuery.java` and `application/service/PlatformAnalyticsService.java`
+    - Implement platform analytics against read replica (`@Transactional(readOnly = true)`):
+      - `totalUsers`, `newUsersInPeriod`, `totalCourtOwners`, `totalCourts`, `totalBookings`, `totalRevenueCents`, `totalPlatformFeesCents`
+      - `activeUsers`: users with at least one booking or login within period
+      - `bookingsByCourtType`: aggregate by court type
+      - `topCourts`: top 10 courts by booking count with revenue
+      - `userGrowth`: daily new users + cumulative users
+    - Create `adapter/in/web/AdminAnalyticsController.java`:
+      - `GET /api/admin/analytics` with `from`, `to` params (PLATFORM_ADMIN only)
+    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
+
+- [ ] 13. Platform Service — Global Search
+  - [ ] 13.1 Implement global search with PostgreSQL full-text search and internal API
+    - Create `application/port/out/CourtSearchPort.java` using `tsvector` GIN indexes for court name/description/address matching
+    - Create `application/port/out/TransactionServiceSearchPort.java` with `searchBookings()` calling `GET /internal/bookings/search`
+    - Create `application/service/GlobalSearchService.java`: merge court results + booking results + promo code stub (empty until Phase 10), paginate, sort by relevance
+    - Validate query length: min 2, max 100 chars
+    - Mask customer data in booking search results (partial name, partial phone)
+    - Create `adapter/in/web/SearchController.java`:
+      - `GET /api/search?q={query}&type=&page=&size=` — court owner search (own entities only)
+    - Create `adapter/in/web/AdminSearchController.java`:
+      - `GET /api/admin/search?q={query}` — PLATFORM_ADMIN platform-wide search
+    - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7_
+  - [ ]* 13.2 Write property test for search isolation (P10)
+    - **Property 10: Search Result Isolation** — verify all results belong to searcher (PLATFORM_ADMIN exempt)
+    - **Validates: Requirements 12.1, 20.8**
+
+- [ ] 14. Platform Service — Bulk Court Visibility Toggle and Court Clone
+  - [ ] 14.1 Extend BulkCourtOperationsUseCase with visibility toggle and clone
+    - Extend existing `application/port/in/BulkCourtOperationsUseCase.java` with `bulkToggleVisibility` and `cloneCourtConfig`
+    - `bulkToggleVisibility`: validate ownership, max 50 courts (400 `BULK_LIMIT_EXCEEDED`), check preconditions for visible=true (verified + Stripe active), publish `COURT_UPDATED` events, record `COURT_VISIBILITY_TOGGLED` audit logs
+    - `cloneCourtConfig`: copy pricing rules, cancellation tiers, availability windows, confirmation mode, amenities from source to target courts. Validate both source and targets belong to authenticated owner
+    - Create `adapter/in/web/BulkVisibilityController.java`: `POST /api/courts/bulk/visibility` with `{ courtIds: [UUID], visible: boolean }`
+    - Create `adapter/in/web/CourtCloneController.java`: `POST /api/courts/{sourceCourtId}/clone` with `{ targetCourtIds: [UUID] }`
+    - Response: `{ successCount, failureCount, failures: [{ courtId, reason }] }`
+    - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7_
+  - [ ]* 14.2 Write property test for bulk completeness (P11)
+    - **Property 11: Bulk Operation Completeness** — verify success + failure = total
+    - **Validates: Requirements 13.1, 20.6**
+
+- [ ] 15. Platform Service — Role-Based Access Control Enforcement
+  - [ ] 15.1 Audit and enforce RBAC on all admin endpoints
+    - Review all controllers and ensure Spring Security `@PreAuthorize` or `SecurityConfig` rules enforce:
+      - COURT_OWNER endpoints return only the owner's data
+      - PLATFORM_ADMIN endpoints have platform-wide access
+      - SUPPORT_AGENT endpoints have read-only access to support tickets and user activity
+    - Add `SuspendedUserFilter` to reject requests from SUSPENDED users (after JWT auth)
+    - Verify all `/api/admin/*` endpoints require PLATFORM_ADMIN role
+    - Verify all `/internal/*` endpoints require internal API key or mTLS
+    - _Requirements: 14.6_
+
+- [ ] 16. Checkpoint — Ensure feature flags, admin, search, bulk, and RBAC tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 17. Platform Service — GDPR Data Export, Sessions, Profile Photo
+  - [ ] 17.1 Implement GDPR data export (async ZIP generation)
+    - Create `application/port/in/RequestDataExportUseCase.java`, `application/port/in/GetDataExportQuery.java`
+    - Create `application/service/GdprDataExportService.java` with `@Async("gdprExportExecutor")`:
+      - Collect: profile, courts, bookings (cross-schema), revenue data
+      - Generate: `profile.json`, `courts.json`, `courts.csv`, `bookings.json`, `bookings.csv`, `revenue.json`, `revenue.csv` → bundle ZIP
+      - Upload to DO Spaces: `exports/{userId}/{exportId}.zip` with 7-day expiry
+      - Track status in Redis: `gdpr-export:{exportId}` with 8-day TTL
+      - Rate limit: 10/day via Redis key `gdpr-export-limit:{courtOwnerId}` with 24h TTL
+      - Publish `NOTIFICATION_REQUESTED` (DATA_EXPORT_READY) on completion
+      - Record `DATA_EXPORT_REQUESTED` audit log entry
+    - Create `adapter/in/web/DataExportController.java`:
+      - `POST /api/users/me/data-export` → 202 Accepted with `{ exportId, status: "PROCESSING" }` or 429
+      - `GET /api/users/me/data-exports/{exportId}` → 200 with `{ exportId, status, downloadUrl, expiresAt }` or 404
+    - _Requirements: 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 21.7_
+  - [ ] 17.2 Implement active sessions management
+    - Create `application/port/in/ListActiveSessionsQuery.java`, `application/port/in/RevokeSessionUseCase.java`
+    - Create `application/service/SessionManagementService.java`:
+      - List sessions from `refresh_tokens` table where `invalidated = false` and `expires_at > now()`
+      - Parse User-Agent with `ua-parser` library for device type, browser, OS
+      - Mask IP addresses (e.g., `192.168.***.***`)
+      - Detect current session by matching request's refresh token hash
+      - Revoke session: invalidate refresh token, 422 if current session (`CANNOT_REVOKE_CURRENT_SESSION`)
+      - Record `SESSION_REVOKED` audit log entry with session ID and device info
+    - Create `adapter/in/web/SessionController.java`:
+      - `GET /api/users/me/sessions` → `{ sessions: [{ sessionId, deviceType, browser, ipAddress, lastActivity, current }] }`
+      - `DELETE /api/users/me/sessions/{sessionId}` → 204 or 404 or 422
+    - _Requirements: 22.1, 22.2, 22.3, 22.4_
+  - [ ] 17.3 Implement profile photo upload
+    - Create `application/port/in/UploadProfilePhotoUseCase.java`, `application/port/in/DeleteProfilePhotoUseCase.java`
+    - Create `application/service/ProfilePhotoService.java`:
+      - Validate format (JPEG/PNG/WebP), max 2MB
+      - Upload to DO Spaces: `profiles/{userId}/{uuid}.{ext}`
+      - Update `users.profile_image_url` with CDN URL
+      - Delete previous photo on re-upload
+    - Create `adapter/in/web/ProfilePhotoController.java`:
+      - `POST /api/users/me/profile-photo` → 200 `{ profileImageUrl }` or 400
+      - `DELETE /api/users/me/profile-photo` → 204 or 404
+    - _Requirements: 23.1, 23.2, 23.3, 23.4_
+  - [ ]* 17.4 Write property tests for GDPR export and sessions (P17, P18)
+    - **Property 17: GDPR Export Completeness** — verify all court IDs present in export
+    - **Validates: Requirements 20.13**
+    - **Property 18: Session Revocation Consistency** — verify revoked session absent from list
+    - **Validates: Requirements 20.14**
+  - [ ]* 17.5 Write unit tests for GdprDataExportService, SessionManagementService, ProfilePhotoService
+    - Test data collection, ZIP generation, status tracking, rate limiting
+    - Test User-Agent parsing, IP masking, current session detection, revocation
+    - Test image validation, upload, delete, re-upload cleanup
+    - _Requirements: 21.1, 22.1, 23.1_
+
+- [ ] 18. Platform Service — i18n / Accept-Language Routing and Translations API
+  - [ ] 18.1 Implement I18nConfig, ContentLanguageInterceptor, and TranslationsController
+    - Create `config/I18nConfig.java` with `AcceptHeaderLocaleResolver` (supported: `el`, `en`; default: `en`) and `ReloadableResourceBundleMessageSource` for `messages_en.properties` / `messages_el.properties`
+    - Create `adapter/in/web/interceptor/ContentLanguageInterceptor.java` to inject `Content-Language` response header on all API responses
+    - Implement language fallback logic for court data: requested language → other language → "Unnamed Court"
+    - Language resolution priority: (1) `Accept-Language` header, (2) user's `language` preference from DB, (3) default `en`
+    - Create `application/port/out/TranslationPersistencePort.java` and `adapter/out/persistence/TranslationPersistenceAdapter.java` for the `translations` table
+    - Create `adapter/in/web/AdminTranslationsController.java`:
+      - `GET /api/admin/translations?namespace={namespace}&language={language}` — list translations (PLATFORM_ADMIN only)
+      - `PUT /api/admin/translations/{key}` — create or update translation (PLATFORM_ADMIN only)
+    - _Requirements: 30.1, 30.2, 30.3, 30.4, 30.5, 30.8, 30.9_
+  - [ ]* 18.2 Write unit tests for i18n locale resolution and language fallback
+    - Test Accept-Language header parsing, fallback chain
+    - Test court name resolution with missing translations
+    - Test Content-Language response header injection
+    - _Requirements: 30.1, 30.2, 30.8_
+
+- [ ] 19. Platform Service — Analytics Events Kafka Consumer
+  - [ ] 19.1 Implement AnalyticsEventKafkaConsumer
+    - Create `adapter/in/kafka/AnalyticsEventKafkaConsumer.java`:
+      - Consumer group: `platform-service-analytics-consumer`
+      - Topic: `analytics-events` with `auto.offset.reset=latest`
+      - Handle event types: `BOOKING_ANALYTICS`, `PAYMENT_ANALYTICS`, `USER_ANALYTICS`
+      - On each event: invalidate dashboard cache for affected court owner in Redis
+      - Consumer-side idempotency: check `eventId` in Redis (key `analytics-event:{eventId}`, 7-day TTL) before processing
+      - Log and skip malformed events at WARN level without blocking consumer
+    - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5, 17.6_
+
+- [ ] 20. Checkpoint — Ensure GDPR, sessions, profile photo, i18n, and Kafka consumer tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 21. Transaction Service — Internal APIs and Reminder Rule Evaluation Job
+  - [ ] 21.1 Implement internal booking search API
+    - Create `adapter/in/web/InternalBookingSearchController.java`:
+      - `GET /internal/bookings/search?courtOwnerId={id}&q={query}&limit=20`
+    - Create `application/port/in/SearchBookingsInternalQuery.java` and service
+    - Search by: booking ID prefix, customer name, customer phone
+    - Mask customer data in results (partial name `K***`, partial phone `+30 69** *** *45`)
+    - Secure with internal API key header (`X-Internal-Api-Key`)
+    - _Requirements: 12.3_
+  - [ ] 21.2 Implement internal dispute API
+    - Create `adapter/in/web/InternalDisputeController.java`:
+      - `GET /internal/disputes` — list disputes with `status`, `page`, `size`, `sort` params
+      - `GET /internal/disputes/{disputeId}` — dispute detail with booking context, payment timeline
+      - `POST /internal/disputes/{disputeId}/notes` — add admin note
+    - Query disputes from `transaction.payments` where `dispute_status IS NOT NULL`
+    - Secure with internal API key header
+    - _Requirements: 10.1, 10.2, 10.3_
+  - [ ] 21.3 Implement ReminderRuleEvaluationJob (Quartz, every 30 min)
+    - Create `adapter/in/scheduler/ReminderRuleEvaluationJob.java` implementing Quartz `Job`
+    - Fetch active rules from Platform Service via `GET /internal/reminder-rules/active`
+    - Evaluate each rule type:
+      - `UNPAID_BOOKING`: manual bookings not marked paid externally within `daysBeforeEvent` window
+      - `PAYMENT_HELD_NOT_CAPTURED`: customer bookings on manual-confirmation courts with uncaptured authorization within `daysBeforeEvent` window
+      - `PENDING_CONFIRMATION`: pending bookings waiting longer than `hoursBeforeThreshold` hours
+      - `NO_CONTACT_MANUAL`: manual bookings with no customer contact info (no email AND no phone)
+      - `LOW_OCCUPANCY`: occupancy rate below threshold for next `daysBeforeEvent` days
+    - Publish `NOTIFICATION_REQUESTED` events with rule's `channels` array
+    - Deduplication: Redis key `reminder-fired:{ruleId}:{bookingId}` with 30-day TTL. Also check `reminder-dismissed:{ruleId}:{bookingId}` before publishing
+    - Skip rules with `active = false`
+    - Register Quartz job with cron `0 0/30 * * * ?`
+    - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 18.7, 18.8, 18.9, 18.10_
+  - [ ] 21.4 Implement internal reminder rules endpoint on Platform Service
+    - Create `adapter/in/web/InternalReminderRulesController.java` on Platform Service:
+      - `GET /internal/reminder-rules/active` — returns all active rules with court owner info
+    - Secure with internal API key
+    - _Requirements: 18.1_
+  - [ ] 21.5 Implement reminder dismissal endpoint on Platform Service
+    - Create endpoint on Platform Service:
+      - `POST /api/settings/reminder-rules/{ruleId}/dismiss/{bookingId}`
+    - Store dismissal in Redis: `reminder-dismissed:{ruleId}:{bookingId}` with 30-day TTL
+    - _Requirements: 18.10_
+  - [ ]* 21.6 Write property tests for reminder evaluation (P12, P13)
+    - **Property 12: Reminder Deduplication** — verify at most one notification per rule-booking pair
+    - **Validates: Requirements 18.8, 18.10**
+    - **Property 13: Disabled Rule Isolation** — verify zero notifications for active=false rules
+    - **Validates: Requirements 18.1, 18.9, 20.15**
+  - [ ]* 21.7 Write unit tests for ReminderRuleEvaluationJob
+    - Test each rule type with matching/non-matching bookings
+    - Test deduplication behavior, dismissed rule skipping
+    - _Requirements: 18.2, 18.3, 18.4, 18.5, 18.6_
+
+- [ ] 22. Checkpoint — Ensure Transaction Service internal APIs and reminder job tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 23. Admin Web Portal — Project Scaffolding, Dockerfile, and CI/CD
+  - [ ] 23.1 Scaffold Vite + React 18 + TypeScript project
+    - Initialize project with Vite, React 18+, TypeScript 5+ (strict mode: `strict: true`, `noUncheckedIndexedAccess: true`)
+    - Install core dependencies: React Router v6, Ant Design v5, Axios, TanStack Query v5, react-i18next + i18next-http-backend, dayjs, Zustand, Zod, Recharts, SockJS + @stomp/stompjs, DOMPurify (for XSS sanitization — Req 14.8)
+    - Configure ESLint with `eslint-plugin-react-hooks`, `eslint-plugin-jsx-a11y`, Prettier
+    - Configure path aliases (`@/features/`, `@/components/`, `@/hooks/`, `@/lib/`, `@/services/`, `@/stores/`, `@/types/`, `@/utils/`)
+    - Create `.env.local` (localhost:8080 Platform, localhost:8081 Transaction), `.env.staging`, `.env.production` with API base URLs
+    - Reference `figma-reference/src/` for component structure and layout intent
+    - _Requirements: 24.1, 24.2, 24.4, 24.7_
+  - [ ] 23.2 Generate TypeScript API types from OpenAPI specs
+    - Install `openapi-typescript` as dev dependency
+    - Create npm script `generate-api-types` that generates types from `openapi-platform-service.yaml` and `openapi-transaction-service.yaml`
+    - Generate types to `src/types/api/platform.ts` and `src/types/api/transaction.ts`
+    - Commit generated types to repository
+    - _Requirements: 24.3_
+  - [ ] 23.3 Create Dockerfile for admin-web (multi-stage Node → NGINX)
+    - Stage 1: Node.js build (`npm ci && npm run build`)
+    - Stage 2: NGINX serve with gzip compression, SPA fallback routing (`try_files $uri /index.html`)
+    - Configure CSP headers in NGINX config: `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.courtbooking.gr wss://api.courtbooking.gr; font-src 'self';`
+    - _Requirements: 24.5, 14.7_
+  - [ ] 23.4 Create GitHub Actions CI/CD pipeline for admin-web
+    - Workflow: `.github/workflows/ci.yml`
+    - Steps: checkout → install (`npm ci`) → lint (`eslint .`) → type check (`tsc --noEmit`) → test (`vitest --run`) → build (`vite build`) → Docker build → Docker push to DigitalOcean Container Registry
+    - Trigger on push to main and PRs
+    - _Requirements: 24.6_
+  - [ ] 23.5 Set up Axios instances, auth store, CSRF integration, and secure cookies
+    - Create centralized Axios instance in `src/lib/api.ts` with:
+      - JWT Bearer injection from in-memory storage (NOT localStorage)
+      - CSRF token injection (`X-CSRF-Token` header) on POST/PUT/DELETE/PATCH
+      - 401 auto-refresh interceptor (silent token refresh via `POST /api/auth/refresh`, retry original request)
+      - Error normalization interceptor
+    - Create separate Axios instances for Platform Service and Transaction Service base URLs
+    - Create Zustand auth store (`src/stores/authStore.ts`): user, accessToken, csrfToken, login/logout/refreshToken/fetchCsrfToken
+    - Create Zustand UI store (`src/stores/uiStore.ts`): sidebarCollapsed, theme, toggleSidebar
+    - Configure cookie attributes: `HttpOnly`, `Secure`, `SameSite=Strict` on all cookies (set via Axios `withCredentials: true`)
+    - _Requirements: 24.8, 14.1, 14.13_
+  - [ ] 23.6 Set up TanStack Query provider with stale-while-revalidate and mutation-based cache invalidation
+    - Configure `QueryClient` with `staleTime: 5 * 60 * 1000` (5 min), `gcTime: 10 * 60 * 1000` (10 min), `retry: 1`, `refetchOnWindowFocus: true`
+    - Create query key factories in `src/lib/queryKeys.ts`: `dashboardKeys`, `courtKeys`, `bookingKeys`, `analyticsKeys`, `supportKeys`, `adminKeys`, `settingsKeys`
+    - Implement mutation-based cache invalidation pattern: creating a court invalidates `courtKeys.lists()`, confirming a booking invalidates `bookingKeys.lists()`, etc.
+    - _Requirements: 24.2, 29.6_
+  - [ ] 23.7 Set up i18n with react-i18next and language selector
+    - Configure i18next with HTTP backend loading from Platform Service translations API (`/api/admin/translations?namespace={{ns}}&language={{lng}}`)
+    - Set up fallback to local bundles (`public/locales/el/`, `public/locales/en/`)
+    - Create initial translation JSON files for namespaces: `common`, `dashboard`, `courts`, `bookings`, `analytics`, `support`, `settings`, `admin`
+    - Supported languages: `el` (Greek), `en` (English); fallback: `en`
+    - _Requirements: 30.6, 30.7, 15.10_
+  - [ ] 23.8 Set up WebSocket client (SockJS + STOMP)
+    - Create WebSocket client in `src/lib/websocket.ts` connecting to Transaction Service `/ws` endpoint
+    - Implement auto-reconnect with exponential backoff (1s, 2s, 4s, max 30s)
+    - Create `useWebSocket` hook for subscribing to topics
+    - Display "Live updates paused" indicator in header when disconnected
+    - On reconnect: fetch full data refresh for currently visible page
+    - _Requirements: 24.9, 28.3, 28.5_
+  - [ ] 23.9 Set up content sanitization for XSS prevention
+    - Install and configure DOMPurify
+    - Create `sanitizeHtml` utility wrapping DOMPurify with allowed tags: `p`, `b`, `i`, `em`, `strong`, `a`
+    - Apply sanitization to all user-generated content before rendering (support ticket messages, notes, etc.)
+    - _Requirements: 14.8_
+
+- [ ] 24. Admin Web Portal — Layout, Routing, Auth, and Global UX Patterns
+  - [ ] 24.1 Implement AppLayout with Sidebar, Header, and Breadcrumb
+    - Create `src/components/layout/AppLayout.tsx` using Ant Design `Layout`, `Layout.Sider` (dark theme #001529, collapsible 240px→80px), `Layout.Header` (white, 64px), `Layout.Content` (#F5F5F5 background, 24px padding)
+    - Implement Sidebar using Ant Design `Menu` with `Menu.Item` and `Menu.SubMenu`:
+      - Main nav: Dashboard (HomeOutlined), Courts (BankOutlined), Bookings (CalendarOutlined), Analytics (BarChartOutlined), Support (MessageOutlined), Settings (SettingOutlined), Audit Log (FileSearchOutlined)
+      - Admin section divider + label (PLATFORM_ADMIN only): Users (TeamOutlined), Verifications (SafetyCertificateOutlined), Feature Flags (FlagOutlined), Platform Analytics (GlobalOutlined), Disputes (ExclamationCircleOutlined), Support Metrics (DashboardOutlined)
+      - Bottom: user avatar, name, role badge, collapse toggle
+    - Implement Header using Ant Design components:
+      - Left: `Breadcrumb` showing current page path
+      - Center: `Input.Search` (280px) for global search triggering `GET /api/search`
+      - Right: Language switcher (`Segmented` with EL/EN options — persists to user profile), notification bell (`Badge` with count + `Popover` dropdown), user `Dropdown` with avatar
+    - Reference `figma-reference/src/app/components/Sidebar.tsx`, `Header.tsx`, `Layout.tsx` for structure
+    - _Requirements: 15.3, 15.5, 15.6, 30.6_
+  - [ ] 24.2 Implement route definitions with lazy loading, role guards, and 404/error pages
+    - Create `ProtectedRoute` component (redirect unauthenticated to /login)
+    - Create `RoleGuard` component (redirect non-admin to dashboard with "Access Denied" `notification.error()` for admin routes)
+    - Define all routes with `React.lazy()` and `Suspense` fallback to `Skeleton` page:
+      - `/login` — Login page
+      - `/onboarding/stripe` — Stripe Connect onboarding
+      - `/onboarding/verification` — Business verification
+      - `/` — Dashboard
+      - `/courts` — Court list
+      - `/courts/:id` — Court detail (tabbed: Details, Availability, Holidays, Pricing, Cancellation)
+      - `/bookings` — Booking list (filterable table)
+      - `/bookings/calendar` — Calendar view
+      - `/bookings/pending` — Pending queue
+      - `/bookings/manual` — Manual booking form
+      - `/analytics` — Analytics (tabbed: Revenue, Usage, Heatmap)
+      - `/support` — Support tickets (split panel)
+      - `/settings` — Settings (vertical tabs)
+      - `/audit-log` — Audit log
+      - `/holidays` — Holiday calendar (separate page)
+      - `/admin/users` — User management
+      - `/admin/verifications` — Verification queue
+      - `/admin/feature-flags` — Feature flags
+      - `/admin/analytics` — Platform analytics
+      - `/admin/disputes` — Disputes
+      - `/admin/support-metrics` — Support metrics
+    - Create 404 Not Found page and generic error fallback page with navigation back to dashboard
+    - Reference `figma-reference/src/app/routes.tsx` for route structure
+    - _Requirements: 15.2, 15.4, 16.7, 29.7_
+  - [ ] 24.3 Implement OAuth login page
+    - Create Login page with Google, Facebook, Apple OAuth buttons
+    - JWT token storage in memory (Zustand store, NOT localStorage)
+    - After login: fetch CSRF token via `GET /api/auth/csrf-token`, store in auth store
+    - Language toggle (EL/EN) on login page footer
+    - Reference `figma-reference/src/app/pages/auth/Login.tsx` for layout
+    - _Requirements: 15.4_
+  - [ ] 24.4 Implement session timeout with warning dialog
+    - Track user activity (mouse, keyboard, scroll events)
+    - After 25 minutes of inactivity: show Ant Design `Modal` warning with countdown timer (5 min remaining), "Stay Logged In" button (extends session via CSRF token refresh), "Log Out" button
+    - After 30 minutes: auto-logout, redirect to /login
+    - Reference `figma-reference/src/app/pages/UIStates.tsx` (Frame 6 — Session Timeout Warning) for dialog design
+    - _Requirements: 14.2_
+  - [ ] 24.5 Implement global toast notifications and error handling
+    - Configure Ant Design `notification` (toast) for success/error feedback on ALL user actions
+    - Centralized error handling strategy:
+      - Network errors (timeout, 5xx): `notification.error()` with "Something went wrong" + "Retry" button
+      - Client errors (4xx): show specific error message from API `message` field
+      - 401: silent token refresh with automatic request retry
+      - 429 (rate limited): read `Retry-After` header, show `Alert` with countdown timer, disable action button until timer expires
+    - Create `ErrorBoundary` component catching rendering errors with fallback UI + retry option
+    - _Requirements: 15.7, 15.9, 29.1, 29.2, 29.5_
+  - [ ] 24.6 Implement loading skeletons and optimistic UI updates
+    - Create `PageSkeleton` component using Ant Design `Skeleton` for all data-fetching pages (dashboard cards, tables, detail drawers)
+    - Loading indicators appear after 300ms delay (perceived-as-instant threshold)
+    - Use `Spin` for action buttons during API calls, `Progress` for file uploads
+    - Implement optimistic UI updates for: court visibility toggle, reminder rule enable/disable, notification mark-as-read. Revert with error toast on failure
+    - Reference `figma-reference/src/app/pages/UIStates.tsx` (Frame 2 — Loading Skeletons) for skeleton patterns
+    - _Requirements: 15.8, 29.3, 29.4, 29.6_
+  - [ ] 24.7 Implement notification bell and dropdown
+    - Notification bell icon in header with `Badge` showing unread count from `GET /api/notifications?unreadOnly=true`
+    - `Popover` dropdown showing 20 most recent notifications: type icon, title, body, relative timestamp, read/unread indicator
+    - Click notification: mark as read via `POST /api/notifications/{id}/read`, navigate to relevant page
+    - "Mark all as read" link, "View All" link
+    - Subscribe to WebSocket `/user/queue/notifications` for real-time updates
+    - Reference `figma-reference/src/app/pages/UIStates.tsx` (Frame 5 — Notification Dropdown) for design
+    - _Requirements: 28.1, 28.2, 28.3_
+  - [ ] 24.8 Implement Web Push notification registration
+    - Register for Web Push via `POST /api/notifications/device` with platform `WEB` using W3C Push API with VAPID keys
+    - Request notification permission on first login
+    - Court owners receive push notifications even when browser tab is closed
+    - _Requirements: 28.4_
+
+- [ ] 25. Checkpoint — Ensure admin portal scaffolding, layout, routing, and auth work
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 26. Admin Web Portal — Dashboard Page
+  - [ ] 26.1 Implement Dashboard page with stat cards, needs-attention widget, notifications, court summary, and quick actions
+    - Use Ant Design `Statistic` inside `Card` for 4 stat cards: Today's Bookings (blue), Pending Confirmations (amber, clickable → navigates to /bookings/pending), Revenue This Month (green, with `TrendingUp` comparison), Occupancy Today (purple, circular progress via custom SVG or Ant `Progress` type="circle")
+    - "Needs Attention" widget: `Card` with grouped alert items (unpaid bookings, pending confirmations) using `Alert` or custom list. Each item has: warning icon, title, customer (masked), action buttons row (View Details link, Contact secondary button, Cancel Booking danger text, Dismiss ghost)
+    - Recent Notifications: `Card` with `List` of 5 items, each with icon, message, relative timestamp, unread dot. "View All" link at bottom
+    - Court Summary: `Card` with `Descriptions` or custom rows showing total/visible/hidden counts, verification status (green checkmark), Stripe status
+    - Quick Actions: `Card` with `Button` row: "Create Manual Booking" (primary), "Confirm Pending Bookings" (with `Badge` count), "View Calendar"
+    - Conditional onboarding banners: amber `Alert` for Stripe not active ("Complete Payment Setup" + action button), amber `Alert` for not verified ("Submit Verification" + action button). Show on ALL pages when applicable
+    - API: `GET /api/dashboard` (Platform Service)
+    - TanStack Query hook: `useDashboard()` with `dashboardKeys.detail()`
+    - WebSocket: subscribe to `/topic/bookings/{courtId}` for each owned court to update stats in real-time
+    - Loading: `Skeleton` for stat cards and widgets (300ms delay threshold)
+    - Error: `Alert` with retry button on API failure
+    - Reference `figma-reference/src/app/pages/Dashboard.tsx` for layout
+    - _Requirements: 1.1, 1.8, 1.9, 15.2, 27.5_
+
+- [ ] 27. Admin Web Portal — Court Management Pages
+  - [ ] 27.1 Implement Courts List page
+    - Use Ant Design `Table` with `columns` config for court list from `GET /api/courts/owner/me`
+    - Columns: thumbnail (`Image`), name, type (`Tag` colored: Tennis=green, Padel=blue, Basketball=orange, Football=red), location type (`Tag`), base price (€/session), confirmation mode (`Tag`: Instant=green, Manual=amber), visibility (`Switch`), actions (edit `Button` icon, delete `Button` icon)
+    - Filter bar above table: court type `Select`, location type `Segmented` (All/Indoor/Outdoor), `Input.Search`, visibility `Select`
+    - "Add Court" `Button` (primary) in page header
+    - Row selection with `Table` `rowSelection` → floating action bar: "Toggle Visibility" and "Bulk Pricing" buttons
+    - Table footer: `Pagination`
+    - Empty state: Ant Design `Empty` with "No courts yet — add your first court" + "Add Court" button
+    - Loading: `Skeleton` table rows
+    - Optimistic visibility toggle: update UI immediately, revert on failure with error toast
+    - API: `GET /api/courts/owner/me`, `POST /api/courts/bulk/visibility`
+    - TanStack Query: `useCourts()` with `courtKeys.lists()`
+    - Reference `figma-reference/src/app/pages/Courts.tsx` for layout
+    - _Requirements: 25.1, 25.9_
+  - [ ] 27.2 Implement Create/Edit Court Drawer
+    - Use Ant Design `Drawer` (right-side, 640px) with `Form` + `Form.Item` with Zod validation
+    - Form sections: Basic Info (name Greek/English, description Greek/English), Court Configuration (type `Select`, location `Radio`, duration `InputNumber`, capacity `InputNumber`, base price `InputNumber` with € prefix), Booking Settings (confirmation mode `Radio` with conditional timeout `InputNumber`, waitlist `Switch`), Address (`Input` + map placeholder), Images (`Upload.Dragger` with JPEG/PNG/WebP, max 10MB, max 20 images), Amenities (`Checkbox.Group` grid)
+    - Create: `POST /api/courts` + `POST /api/courts/{courtId}/images`
+    - Edit: pre-populate from `GET /api/courts/{courtId}`, `PUT /api/courts/{courtId}` with optimistic locking (`version` field). On 409 conflict: show `Modal` with diff between local changes and server state
+    - Delete: `Modal.confirm()` with court name. On 409 (future bookings): show affected bookings list, block deletion
+    - Toast: success/error notification on all actions
+    - Reference `figma-reference/src/app/pages/Courts.tsx` (drawer section) for layout
+    - _Requirements: 25.2, 25.3, 25.4, 14.5_
+  - [ ] 27.3 Implement Court Detail page with tabbed sub-pages
+    - Use Ant Design `Tabs` for: Details, Availability, Holidays, Pricing, Cancellation Policy
+    - Back button → Courts list
+    - **Availability tab**: Visual weekly schedule with time bars per day (Mon-Sun). Edit icon per day opens `TimePicker` range. "Add Window" per day for split schedules. "Save Schedule" button. Date overrides section: `Calendar` (mini) with blocked dates highlighted + override list with delete. "Add Override" button opens `Drawer` with date picker, reason, time range
+    - **Holidays tab**: Two-column layout. Left: National holidays `Checkbox` list from `GET /api/holidays/national` with "Apply Selected" button. Right: Custom holidays list with "Add Custom" button, edit/delete per item. Bottom: Applied holidays calendar (12-month mini grid)
+    - **Pricing tab**: Base price display with edit icon. Pricing rules `Table` (days, time range, multiplier, effective price, label tag, edit/delete actions). "Add Rule" button
+    - **Cancellation tab**: "Use Default Policy" `Switch`. Custom tiers: visual timeline (color-coded refund percentages), tier list with edit/delete, "Add Tier" button
+    - APIs: `GET/PUT /api/courts/{courtId}/availability/windows`, `GET/POST/DELETE /api/courts/{courtId}/availability/overrides`, `GET /api/holidays/national`, `GET/POST/PUT/DELETE /api/holidays/custom`, `POST /api/holidays/apply`
+    - Reference `figma-reference/src/app/pages/CourtDetail.tsx` for all tab layouts
+    - _Requirements: 25.5, 25.6, 25.7_
+  - [ ] 27.4 Implement Holiday Calendar page (separate from court detail)
+    - Accessible from sidebar navigation
+    - Show national holidays (`GET /api/holidays/national`), custom holidays (`GET/POST/PUT/DELETE /api/holidays/custom`)
+    - Bulk holiday application to courts (`POST /api/holidays/apply`) with court multi-select and conflict detection
+    - Calendar view showing all holidays across all courts for the year
+    - _Requirements: 25.8_
+
+- [ ] 28. Admin Web Portal — Booking Management Pages
+  - [ ] 28.1 Implement Bookings List page with filterable table
+    - Use Ant Design `Table` with filterable columns from `GET /api/bookings` (Transaction Service)
+    - Columns: date, time, court name, customer name (masked), status (`Tag` color-coded: Confirmed=success, Pending=warning, Cancelled=error, Manual=processing, Completed=default, No-Show=volcano), payment status, actions
+    - Filter bar: date range `RangePicker`, court `Select`, status `Select`, payment status `Select`, `Input.Search`
+    - Click row → opens `BookingDetailDrawer`
+    - Loading: `Skeleton` table
+    - _Requirements: 26.1_
+  - [ ] 28.2 Implement Booking Calendar View
+    - Use Ant Design `Calendar` or full-calendar library for daily/weekly/monthly views
+    - Color-coded booking blocks by status (green=confirmed, yellow=pending, blue=manual, red=cancelled)
+    - Court selector `Select` at top, date navigation, view toggle (Day/Week/Month `Segmented`)
+    - Click empty slot → opens manual booking form
+    - Click booking block → opens `BookingDetailDrawer`
+    - "Export iCal" `Button` triggering `GET /api/bookings/calendar/ical`
+    - Legend bar at bottom
+    - WebSocket: subscribe to `/topic/bookings/{courtId}` for real-time updates
+    - Reference `figma-reference/src/app/pages/Bookings.tsx` (calendar tab) for layout
+    - _Requirements: 26.2, 26.6, 26.7_
+  - [ ] 28.3 Implement Pending Bookings Queue page
+    - List of pending booking cards from `GET /api/bookings/pending`
+    - Each card: customer name (masked), court, date/time, amount held, countdown timer (auto-cancel), Confirm (`Button` success) and Reject (`Button` danger outline) with optional message `TextArea`
+    - Bulk actions `Dropdown`: "Confirm All", "Reject All" via `POST /api/bookings/bulk-action`
+    - Bulk confirm `Modal.confirm()` showing booking list and total capture amount
+    - Empty state: `Empty` with "No pending bookings"
+    - Reference `figma-reference/src/app/pages/Bookings.tsx` (pending tab) for layout
+    - _Requirements: 26.3_
+  - [ ] 28.4 Implement Manual Booking Creation form
+    - Court selector `Select`, date `DatePicker`, time slot grid (available slots from availability API), duration `InputNumber`
+    - Optional customer info: name, phone, email, notes
+    - Recurring toggle `Switch`: "Repeat weekly" with weeks `InputNumber` (1-12)
+    - "Create Booking" `Button` via `POST /api/bookings/manual` or `POST /api/bookings/recurring`
+    - Reference `figma-reference/src/app/pages/Bookings.tsx` (manual tab) for layout
+    - _Requirements: 26.4_
+  - [ ] 28.5 Implement BookingDetailDrawer component
+    - Use Ant Design `Drawer` (right-side, 640px)
+    - Sections: Booking Info (court link, date, time, duration, type tag, people, confirmation mode), Customer Info (masked email/phone with "Show full" `Button` that triggers `CUSTOMER_DATA_ACCESSED` audit log), Payment Details (amount, platform fee, court owner net, payment status tag, Stripe payment ID link, payment method, payment timeline with steps), Audit Trail (timestamped action list with actor and role)
+    - Sticky bottom actions based on status:
+      - Confirmed: "Flag No-Show" (amber), "Cancel Booking" (red outline)
+      - Pending: "Confirm Booking" (green), reject with required reason `TextArea`
+      - Cancelled: "View Refund Details" link
+      - Manual unpaid: "Mark as Paid Externally" button
+    - Reference `figma-reference/src/app/components/BookingDetailDrawer.tsx` for layout
+    - _Requirements: 26.5, 14.3, 14.4_
+
+- [ ] 29. Admin Web Portal — Analytics Pages
+  - [ ] 29.1 Implement Analytics page with Revenue, Usage, and Heatmap tabs
+    - Use Ant Design `Tabs` for Revenue, Usage, Heatmap
+    - Controls bar: `RangePicker` with preset buttons (7d/30d/90d/1y `Segmented`), court `Select`, court type `Select`, Export `Dropdown` (CSV, PDF)
+    - **Revenue tab**: 4 stat cards (`Card` + `Statistic`: Total Bookings with % change, Revenue Gross, Platform Fees, Revenue Net with green highlight). Revenue trend `LineChart` (Recharts) with current vs previous period (dashed). Revenue by Court `Table` with sortable columns and occupancy `Progress` bars. Total row in bold
+    - **Usage tab**: Overall occupancy `Progress` type="circle" (large). Peak Hours `BarChart`. Busiest Days `BarChart`
+    - **Heatmap tab**: 7×15 grid (days × hours 8-22). Color intensity from white→light blue→dark blue. Hover `Tooltip` showing day, hour, booking count, occupancy %. Legend bar
+    - APIs: `GET /api/analytics/revenue`, `GET /api/analytics/usage`, `GET /api/analytics/heatmap`, `GET /api/analytics/export?format=csv|pdf`
+    - TanStack Query: `useRevenueAnalytics()`, `useUsageAnalytics()`, `useHeatmap()` with `analyticsKeys`
+    - Loading: `Skeleton` for charts and tables
+    - Empty state: `Empty` with "Not enough data yet"
+    - Reference `figma-reference/src/app/pages/Analytics.tsx` for all tab layouts
+    - _Requirements: 15.2, 2.1, 3.1, 4.1_
+
+- [ ] 30. Admin Web Portal — Support Tickets Page
+  - [ ] 30.1 Implement Support page with split-panel layout
+    - Left panel (400px): ticket list with `Input.Search`, filter tabs (All/Open/In Progress/Resolved with counts), ticket cards showing subject, category `Tag`, priority `Tag`, status `Tag`, timestamp, assigned avatar. Selected ticket highlighted with blue left border. "New Ticket" `Button`
+    - Right panel: ticket detail header (subject, status `Select` dropdown, priority, category tags), info bar (created date, ticket ID, related booking link, assigned to `Select`), message thread (chat-style: customer messages left-aligned gray bubble, agent messages right-aligned blue bubble, attachment chips), reply box (`TextArea` + "Attach Files" `Button` + "Send Reply" `Button`)
+    - Collapsible right sidebar: customer info card (masked email/phone), booking context card, ticket metadata
+    - APIs: `GET/POST /api/support/tickets`, `GET /api/support/tickets/{ticketId}`, `POST /api/support/tickets/{ticketId}/messages`
+    - Reference `figma-reference/src/app/pages/Support.tsx` for layout
+    - _Requirements: 15.2, 6.1, 6.2, 6.3, 6.4_
+
+- [ ] 31. Admin Web Portal — Settings Page
+  - [ ] 31.1 Implement Settings page with vertical tabs
+    - Use Ant Design `Tabs` with `tabPosition="left"` (200px sidebar)
+    - **Profile & Business tab**: Two-column `Form`. Left: profile photo `Upload` circle, display name `Input`, email (read-only with edit icon), phone `Input`, language `Radio.Group` (Greek/English). Right: business name, tax ID (AFM), business type `Select`, business address `TextArea`, contact phone. "Save Changes" `Button`. Warning `Alert` when changing verified business info
+    - **Notification Preferences tab**: `Table` with columns: Event Type (with icon), Email `Switch`, Push `Switch`, In-App `Switch`. Rows: New Booking, Booking Cancelled, Pending Confirmation, Payment Received, Payout Completed, Payment Dispute, Reminder Alerts. Do Not Disturb section: enable `Switch`, start/end `TimePicker`. "Save Preferences" `Button`
+    - **Reminder Rules tab**: Header with "Add Rule" `Button` and "Max 10 rules" subtitle. Rule cards: type `Tag`, description, applies to, channel icons (highlighted if active), enable/disable `Switch`, edit/delete icons
+    - **Court Defaults tab**: `Form` with default duration, confirmation mode `Radio`, timeout hours, cancellation tiers (add/edit/remove), default amenities `Checkbox.Group`. "Save Defaults" `Button`
+    - **Security & Privacy tab**: Active sessions `List` (device icon, browser, masked IP, last active, "Revoke" danger link, "Current" badge). Data Export: "Request Data Export" `Button` with GDPR description. Account Deletion: "Delete Account" danger `Button` with warning
+    - **Stripe Connect tab**: Account status, payout schedule config, payout history, next payout date/amount
+    - APIs: `PUT /api/users/me`, `PUT /api/settings/notification-preferences`, `GET/POST/PUT/DELETE /api/settings/reminder-rules`, `PUT /api/settings/court-defaults`, `GET/DELETE /api/users/me/sessions`, `POST /api/users/me/data-export`, `GET /api/payments/stripe-connect/payouts`
+    - Reference `figma-reference/src/app/pages/Settings.tsx` for all tab layouts
+    - _Requirements: 19.1, 19.2, 19.3, 19.4, 19.5, 19.6, 19.7, 27.4_
+
+- [ ] 32. Admin Web Portal — Audit Log Page
+  - [ ] 32.1 Implement Audit Log page with filterable table and expandable rows
+    - Use Ant Design `Table` with expandable rows from `GET /api/audit-logs`
+    - Filter bar: date range `RangePicker`, action type `Select`, court `Select`, `Input.Search`
+    - Columns: timestamp, action (`Tag` colored by type), court/entity, details summary, expand chevron
+    - Expanded row: JSON diff view (before/after) with syntax highlighting (red for before, green for after)
+    - `Pagination` with page size selector
+    - Retention notice: `Alert` type="info" with "Audit logs are retained for 2 years and cannot be modified or deleted"
+    - Reference `figma-reference/src/app/pages/AuditLog.tsx` for layout
+    - _Requirements: 15.2, 5.1_
+
+- [ ] 33. Checkpoint — Ensure all court owner portal pages render correctly
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 34. Admin Web Portal — Platform Admin Pages
+  - [ ] 34.1 Implement User Management page (PLATFORM_ADMIN)
+    - Use Ant Design `Table` with `Input.Search` and role `Select` filter from `GET /api/admin/users`
+    - Columns: avatar + name, email (masked), role (`Tag` colored: Customer=blue, Court Owner=purple, Support Agent=green, Admin=red), status (`Tag`: Active=green, Suspended=red), verified (checkmark/x for court owners), Stripe (Connected/Not Connected for court owners), registered date, actions (View link, Suspend/Unsuspend link)
+    - Click row → opens detail `Drawer` (480px): profile section (avatar, name, full email), info grid (role, status, registered, active sessions), linked OAuth providers, court owner status (verified, Stripe connected). Actions: "Send Email" `Button`, "Suspend User" danger `Button` (with required reason `TextArea` in `Modal.confirm()`) or "Unsuspend User" success `Button`
+    - Reference `figma-reference/src/app/pages/admin/Users.tsx` for layout
+    - _Requirements: 16.1, 9.1, 9.2, 9.5, 9.7_
+  - [ ] 34.2 Implement Verification Review Queue page (PLATFORM_ADMIN)
+    - Filter tabs: Pending (with count badge), Approved, Rejected
+    - Card list for pending requests: business name, tax ID, business type, owner name, submitted date, SLA countdown (amber if <24h, red if exceeded), document count with "View Documents" link (expandable grid of document previews), re-submission badge if applicable with previous rejection reason
+    - Two-column action area per card: Approve (optional notes `TextArea` + green `Button`) and Reject (required reason `TextArea` + red `Button`)
+    - Reference `figma-reference/src/app/pages/admin/Verifications.tsx` for layout
+    - _Requirements: 16.2_
+  - [ ] 34.3 Implement Feature Flags page (PLATFORM_ADMIN)
+    - Use Ant Design `Table` from `GET /api/admin/feature-flags`
+    - Columns: flag key (monospace `Tag`), description, status (`Switch` toggle: enabled=green, disabled=gray), last modified date, modified by
+    - "Add Flag" `Button` → `Modal` with key `Input`, description `TextArea`, enabled `Switch`
+    - Toggle switch triggers `PUT /api/admin/feature-flags/{flagKey}` with optimistic update
+    - Status legend at bottom
+    - Reference `figma-reference/src/app/pages/admin/FeatureFlags.tsx` for layout
+    - _Requirements: 16.3, 8.1, 8.2_
+  - [ ] 34.4 Implement Platform Analytics page (PLATFORM_ADMIN)
+    - Global search with tabs: All, Courts, Bookings, Users (with counts)
+    - Search bar (full width, prominent) triggering `GET /api/admin/search`
+    - Result cards: entity type icon, primary text, secondary text, status `Tag`, "View" link
+    - Platform metrics dashboard from `GET /api/admin/analytics`: stat cards (total users, courts, bookings, revenue), user growth `LineChart`, bookings by court type `BarChart`, top 10 courts `Table`
+    - Reference `figma-reference/src/app/pages/admin/PlatformAnalytics.tsx` for search layout
+    - _Requirements: 16.4, 11.1, 12.5_
+  - [ ] 34.5 Implement Support Metrics page (PLATFORM_ADMIN)
+    - Stat cards: Total Tickets, Avg Response Time, Avg Resolution Time, Resolution Rate (with trend indicators)
+    - Charts: Tickets by Category `BarChart`, Tickets Over Time `LineChart`, Status Distribution `PieChart` with breakdown grid
+    - Agent Performance `Table`: agent name + avatar, assigned tickets, avg response time, resolved count, satisfaction score
+    - Date range `RangePicker` in header
+    - API: `GET /api/admin/support/metrics`
+    - Reference `figma-reference/src/app/pages/admin/SupportMetrics.tsx` for layout
+    - _Requirements: 16.5, 7.1_
+  - [ ] 34.6 Implement Dispute Management page (PLATFORM_ADMIN)
+    - Filter tabs: All, Open, Under Review, Won, Lost
+    - Use Ant Design `Table` from `GET /api/admin/disputes`
+    - Columns: dispute ID (mono), booking ID (link), court owner, customer, amount, reason (`Tag`), status (`Tag`), created date, actions
+    - Click row → opens detail `Drawer` (640px): dispute info (Stripe ID link, amount, reason, evidence deadline with countdown), booking context (court, date, time, payment ID), evidence list (auto-attached documents with checkmarks), admin notes section (`TextArea` + "Add Note" `Button`), existing notes list. Sticky bottom: "Submit Evidence to Stripe" primary `Button`, "Mark as Resolved" secondary `Button`
+    - Reference `figma-reference/src/app/pages/admin/Disputes.tsx` for layout
+    - _Requirements: 16.6, 10.1, 10.2, 10.3_
+
+- [ ] 35. Admin Web Portal — Onboarding Pages
+  - [ ] 35.1 Implement Stripe Connect onboarding status page
+    - Full-page card with step indicator (3 steps: Account Created, Identity Verification, Bank Account) using custom step component
+    - Status badge (PENDING amber, ACTIVE green, RESTRICTED red)
+    - Status message `Alert` with description
+    - Action buttons: "Resume Onboarding" primary (redirects to Stripe hosted page via `POST /api/payments/stripe-connect/onboard`), "Check Status" secondary
+    - Info box: "Limited functionality" notice
+    - Payout details section (disabled/grayed when not active): payout schedule, balance, payout history
+    - Reference `figma-reference/src/app/pages/onboarding/StripeConnect.tsx` for layout
+    - _Requirements: 27.1, 27.4_
+  - [ ] 35.2 Implement Business Verification submission form
+    - Card with `Form`: business name, tax ID (AFM with Greek format hint), business type `Select`, business address `TextArea`, document upload `Upload.Dragger` (PDF/JPEG/PNG, max 10MB)
+    - Status banners: PENDING_REVIEW (amber), APPROVED (green), REJECTED (red with reason + "Re-submit" button)
+    - Pre-fill from previous submission on re-submit
+    - "Submit for Verification" primary `Button` via `POST /api/verification`
+    - Reference `figma-reference/src/app/pages/onboarding/BusinessVerification.tsx` for layout
+    - _Requirements: 27.2, 27.3_
+  - [ ] 35.3 Implement conditional onboarding banners on all pages
+    - Create `OnboardingBannerProvider` component that checks user profile on mount
+    - Show amber `Alert` banner at top of every page when:
+      - Stripe Connect not ACTIVE: "Complete Payment Setup" with action button
+      - Not verified: "Submit Verification" with action button
+    - Courts list shows "Hidden — pending verification" or "Hidden — Stripe not connected" badge on affected courts
+    - _Requirements: 27.5_
+
+- [ ] 36. Admin Web Portal — Form Validation and Confirmation Modals
+  - [ ] 36.1 Implement consistent form validation and confirmation modals
+    - Configure Ant Design `Form` with inline field-level validation, server-side error mapping (400 `errors[]` → specific `Form.Item` errors), form state preservation on failure
+    - Create reusable confirmation modals using `Modal.confirm()`:
+      - Delete Court: "This will permanently delete {name}..." with Cancel/Delete buttons
+      - Reject Booking: refund amount display + required reason `TextArea`
+      - Suspend User: "This will prevent {email} from logging in" + required reason `TextArea`
+      - Bulk Confirm: booking list with total capture amount
+    - Reference `figma-reference/src/app/pages/UIStates.tsx` (Frame 4 — Confirmation Modals) for designs
+    - _Requirements: 29.1_
+
+- [ ] 37. Checkpoint — Ensure all admin portal pages and platform admin pages work
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 38. Admin Web Portal — Vitest Unit Tests
+  - [ ] 38.1 Write Vitest tests for core hooks and utilities
+    - Test TanStack Query hooks (mock API responses, verify cache behavior)
+    - Test auth store (login, logout, token refresh, CSRF token)
+    - Test WebSocket reconnection logic
+    - Test i18n language switching
+    - Test form validation schemas (Zod)
+    - Test sanitization utility (DOMPurify wrapper)
+    - _Requirements: 24.1_
+
+- [ ] 39. Final Checkpoint — Full integration verification
+  - Ensure all backend tests pass (Platform Service + Transaction Service)
+  - Ensure all frontend tests pass (admin-web Vitest)
+  - Verify all API endpoints are accessible through NGINX routing
+  - Verify WebSocket connections work end-to-end
+  - Verify i18n works for both Greek and English
+  - Ask the user if questions arise.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation
+- Property tests validate universal correctness properties from Requirement 20
+- Unit tests validate specific examples and edge cases
+- Backend tasks specify hexagonal architecture file paths: `adapter/in/web/`, `application/service/`, `application/port/in/`, `application/port/out/`, `adapter/out/persistence/`, `adapter/out/redis/`, `adapter/out/http/`, `adapter/in/kafka/`, `adapter/in/scheduler/`
+- Admin portal tasks reference specific figma-reference files and describe Ant Design component equivalents
+- All admin portal pages include loading skeletons (Req 15.8), toast notifications (Req 15.7), and error handling (Req 29.1-29.7)
+- Spring Security filter chain ordering: `RateLimitFilter → JwtAuthenticationFilter → CsrfValidationFilter → SuspendedUserFilter → Controller`
