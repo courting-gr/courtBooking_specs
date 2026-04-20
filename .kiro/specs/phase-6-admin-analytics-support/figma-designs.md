@@ -2,7 +2,7 @@
 
 ## Figma Source
 
-**Figma Make Project:** https://www.figma.com/make/t47mNNk9yx1aFLaqG1w3uO/Court-Booking-Admin-Portal
+**Figma Make Project:** https://www.figma.com/make/hiZKiz1ZWxe91tFWgfh8W1/Court-Booking-Admin-Portal
 
 This Figma Make project contains the complete UI design for the court-booking-admin-web React application, generated from the Phase 6 requirements. It covers all 14 design prompts (dashboard, court management, bookings, analytics, support, settings, platform admin, login/onboarding, court detail sub-pages, booking detail, audit log, states/modals, disputes/metrics).
 

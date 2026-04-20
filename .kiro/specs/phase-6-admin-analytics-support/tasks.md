@@ -6,8 +6,8 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
 
 ## Tasks
 
-- [ ] 1. Platform Service — Database Migrations and Read Replica Configuration
-  - [ ] 1.1 Create Flyway migration V8__phase6_schema_changes.sql
+- [x] 1. Platform Service — Database Migrations and Read Replica Configuration
+  - [x] 1.1 Create Flyway migration V8__phase6_schema_changes.sql
     - ALTER `reminder_rules.rule_type` CHECK constraint to new canonical types: `UNPAID_BOOKING`, `PAYMENT_HELD_NOT_CAPTURED`, `PENDING_CONFIRMATION`, `NO_CONTACT_MANUAL`, `LOW_OCCUPANCY`
     - ADD `PAYOUT_ISSUES` to `support_tickets.category` CHECK constraint
     - CREATE `platform.admin_audit_logs` table (`id UUID PK`, `admin_id UUID NOT NULL FK → users(id)`, `target_user_id UUID NOT NULL FK → users(id)`, `action VARCHAR(50) NOT NULL`, `reason TEXT`, `metadata JSONB`, `ip_address VARCHAR(45)`, `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`) with indexes on `admin_id`, `target_user_id`, `created_at`. Append-only — no UPDATE or DELETE
@@ -16,29 +16,29 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - CREATE trigger `courts_search_vector_trigger` to keep tsvector columns in sync on INSERT/UPDATE
     - Backfill existing courts with tsvector data
     - _Requirements: 1.10, 5.4, 6.1, 9.8, 12.6_
-  - [ ] 1.2 Implement ReadReplicaRoutingDataSource and DataSourceConfig
+  - [x] 1.2 Implement ReadReplicaRoutingDataSource and DataSourceConfig
     - Create `config/ReadReplicaRoutingDataSource.java` extending `AbstractRoutingDataSource` that routes by `TransactionSynchronizationManager.isCurrentTransactionReadOnly()`
     - Create `config/DataSourceConfig.java` wiring primary and replica DataSources with HikariCP pools (primary: max 10, replica: max 15 read-only)
     - Add `spring.datasource.primary.*` and `spring.datasource.replica.*` configuration to `application.yml`
     - For local profile, point both datasources to the same PostgreSQL instance
     - _Requirements: 2.6, 3.2, 4.5, 11.5_
 
-- [ ] 2. Platform Service — CSRF, Rate Limiting, Auth Event Logging, and Security Filters
-  - [ ] 2.1 Implement CsrfTokenController and CsrfValidationFilter
+- [x] 2. Platform Service — CSRF, Rate Limiting, Auth Event Logging, and Security Filters
+  - [x] 2.1 Implement CsrfTokenController and CsrfValidationFilter
     - Create `adapter/in/web/CsrfTokenController.java`: `GET /api/auth/csrf-token` generates random UUID token, stores in `HttpSession` with `setMaxInactiveInterval(1800)` (30 min), returns `{ csrfToken }`
     - Create `adapter/in/web/security/CsrfValidationFilter.java` (extends `OncePerRequestFilter`): validates `X-CSRF-Token` header against session token for POST/PUT/DELETE/PATCH
     - Skip CSRF for: `/internal/`, `/api/auth/oauth/`, `/api/auth/refresh`, `/api/auth/csrf-token`, `/actuator/`, and requests without `Origin` header (non-browser)
     - Insert filter AFTER `JwtAuthenticationFilter` in `SecurityConfig.securityFilterChain()`. Filter ordering: `RateLimitFilter → JwtAuthenticationFilter → CsrfValidationFilter → SuspendedUserFilter → Controller`
     - Return `403 { error: "CSRF_VALIDATION_FAILED" }` on mismatch
     - _Requirements: 14.1_
-  - [ ] 2.2 Implement RateLimitRedisAdapter and extend RateLimitFilter
+  - [x] 2.2 Implement RateLimitRedisAdapter and extend RateLimitFilter
     - Create `application/port/out/RateLimitPort.java` interface with `isAllowed(key, limit, windowSeconds)` and `getRetryAfterSeconds(key)`
     - Create `adapter/out/redis/RateLimitRedisAdapter.java` using Redis sorted sets (sliding window counter)
     - Extend existing `RateLimitFilter` in `adapter/in/web/security/` to distinguish read (100/min) vs write (30/min) per user
     - Redis key pattern: `rate-limit:{userId}:{read|write}` with 60-second TTL
     - Return `429 Too Many Requests` with `Retry-After` header and `{ error: "RATE_LIMIT_EXCEEDED", retryAfterSeconds }` body
     - _Requirements: 14.10, 14.11, 14.14_
-  - [ ] 2.3 Implement admin portal auth event logging
+  - [x] 2.3 Implement admin portal auth event logging
     - Create `application/port/out/AuthEventLogPort.java` with `logAuthEvent(userId, eventType, ipAddress, userAgent)`
     - Create `adapter/out/persistence/AuthEventLogPersistenceAdapter.java` writing to `court_owner_audit_logs` with action types: `LOGIN`, `LOGOUT`, `SESSION_TIMEOUT`, `SESSION_EXTENDED`
     - Integrate into auth endpoints: `POST /api/auth/login` (log LOGIN), `POST /api/auth/logout` (log LOGOUT), `GET /api/auth/csrf-token` session extension (log SESSION_EXTENDED)
@@ -50,18 +50,18 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Test auth event logging captures IP + user agent correctly
     - _Requirements: 14.1, 14.10, 14.9_
 
-- [ ] 3. Checkpoint — Ensure migrations and security filters pass
+- [x] 3. Checkpoint — Ensure migrations and security filters pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. Platform Service — Analytics API (Revenue, Usage, Heatmap, Export)
-  - [ ] 4.1 Create analytics domain models and ports
+- [-] 4. Platform Service — Analytics API (Revenue, Usage, Heatmap, Export)
+  - [x] 4.1 Create analytics domain models and ports
     - Create `application/port/in/AnalyticsQuery.java` self-validating command record (validates date range ≤ 365 days, from ≤ to)
     - Create response records in `domain/model/`: `RevenueAnalyticsResult`, `UsageAnalyticsResult`, `HeatmapResult`
     - Create incoming ports in `application/port/in/`: `GetRevenueAnalyticsUseCase`, `GetUsageAnalyticsUseCase`, `GetOccupancyHeatmapUseCase`, `ExportAnalyticsUseCase`
     - Create outgoing port `application/port/out/AnalyticsReadPort` with methods: `queryRevenue()`, `queryUsage()`, `queryHeatmap()`, `queryTodayBookings()`, `queryMonthlyRevenue()`, `queryOccupancy()`
     - Create `application/port/out/ExportRateLimitPort` for export rate limiting (10/day)
     - _Requirements: 2.1, 3.1, 4.1_
-  - [ ] 4.2 Implement AnalyticsPersistenceAdapter (read replica queries)
+  - [x] 4.2 Implement AnalyticsPersistenceAdapter (read replica queries)
     - Create `adapter/out/persistence/AnalyticsPersistenceAdapter.java` implementing `AnalyticsReadPort`
     - Revenue query: native SQL aggregating `court_owner_net_cents`, `platform_fee_cents` from `transaction.bookings` cross-schema view, grouped by court
     - Usage query: aggregate booking counts by `EXTRACT(DOW FROM date)` and `EXTRACT(HOUR FROM start_time)`
@@ -71,7 +71,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - No-show counts: aggregate from `bookings.no_show = true` within date range
     - All methods annotated with `@Transactional(readOnly = true)` to route to replica
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 3.1, 3.2, 3.3, 3.4_
-  - [ ] 4.3 Implement AnalyticsService and ExportService
+  - [x] 4.3 Implement AnalyticsService and ExportService
     - Create `application/service/AnalyticsService.java` implementing revenue, usage, heatmap use cases with court ownership validation (`courtId` must belong to authenticated owner)
     - Create `application/service/ExportService.java` implementing `ExportAnalyticsUseCase`
     - CSV export: generate file with columns per Req 4.7 (date, courtName, courtType, bookingCount, confirmedCount, cancelledCount, noShows, revenueGrossCents, platformFeesCents, revenueNetCents, occupancyRate)
@@ -79,7 +79,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Rate limit: 10 exports/day via `ExportRateLimitPort` (Redis key `export-limit:{courtOwnerId}`, 24h TTL)
     - Record `DATA_EXPORTED` audit log entry on each export via `AuditLogPort`
     - _Requirements: 2.1, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7_
-  - [ ] 4.4 Create AnalyticsController with REST endpoints
+  - [x] 4.4 Create AnalyticsController with REST endpoints
     - Create `adapter/in/web/AnalyticsController.java`:
       - `GET /api/analytics/revenue` — revenue data with `from`, `to`, `courtId`, `courtType` query params
       - `GET /api/analytics/usage` — usage/booking trend data
@@ -102,14 +102,14 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - **Validates: Requirements 20.1**
     - **Property 16: CSV Export Round-Trip** — export CSV, parse, verify totals match
     - **Validates: Requirements 20.5**
-  - [ ] 4.6 Write unit tests for AnalyticsService and ExportService
+  - [x] 4.6 Write unit tests for AnalyticsService and ExportService
     - Test known data → expected response structure for revenue, usage, heatmap
     - Test CSV column structure, PDF generation
     - Test export rate limiting behavior (10/day limit, 429 response)
     - _Requirements: 2.1, 4.1_
 
-- [ ] 5. Platform Service — Dashboard Enhancement
-  - [ ] 5.1 Extend DashboardService with Phase 6 fields
+- [-] 5. Platform Service — Dashboard Enhancement
+  - [x] 5.1 Extend DashboardService with Phase 6 fields
     - Extend `DashboardResult` in `application/service/DashboardService.java` with: `todayBookings`, `pendingConfirmations`, `revenueThisMonthCents`, `nextPayoutDate/Amount`, `occupancyRateToday`
     - Add `ActionRequired` record: `pendingBookings`, `unpaidManualBookings`, `expiringPromos` (=0 until Phase 10), `reminderAlerts`
     - Add `RecentNotification` list from `v_recent_notifications` cross-schema view (5 most recent per user)
@@ -122,13 +122,13 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
   - [ ]* 5.2 Write property test for dashboard court summary (P15)
     - **Property 15: Court Summary Partition Invariant** — verify total = visible + hidden
     - **Validates: Requirements 20.2**
-  - [ ] 5.3 Write unit tests for DashboardService
+  - [x] 5.3 Write unit tests for DashboardService
     - Test known data → expected dashboard response
     - Test cache hit/miss behavior, graceful degradation when Stripe API unavailable
     - _Requirements: 1.1, 1.5_
 
 - [ ] 6. Platform Service — Audit Log Query API
-  - [ ] 6.1 Create AuditLogController and QueryAuditLogUseCase
+  - [x] 6.1 Create AuditLogController and QueryAuditLogUseCase
     - Create `application/port/in/QueryAuditLogUseCase.java` and `application/service/AuditLogQueryService.java`
     - Create `adapter/in/web/AuditLogController.java`:
       - `GET /api/audit-logs` — court owner's own logs with pagination (`page`, `size` max 100), date range (`from`, `to`), `action` type filter, `courtId` filter, `sort` (default `createdAt,desc`)
@@ -146,13 +146,13 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - **Validates: Requirements 5.3**
 
 - [ ] 7. Platform Service — Support Ticket System
-  - [ ] 7.1 Create support ticket domain model and ports
+  - [x] 7.1 Create support ticket domain model and ports
     - Create `domain/model/SupportTicket.java` entity with `transitionTo()` enforcing state machine: OPEN→IN_PROGRESS, IN_PROGRESS→WAITING_ON_USER, IN_PROGRESS→RESOLVED, WAITING_ON_USER→IN_PROGRESS, RESOLVED→CLOSED, any→CLOSED (admin only)
     - Create `domain/model/SupportMessage.java`, `domain/model/SupportAttachment.java` records
     - Create incoming ports in `application/port/in/`: `CreateSupportTicketUseCase`, `ListSupportTicketsQuery`, `GetSupportTicketQuery`, `AddSupportMessageUseCase`, `UploadSupportAttachmentUseCase`, `AssignSupportTicketUseCase`, `UpdateSupportTicketStatusUseCase`, `GetSupportMetricsQuery`
     - Create outgoing ports in `application/port/out/`: `SupportTicketPersistencePort`, `SupportMessagePersistencePort`, `SupportAttachmentPersistencePort`
     - _Requirements: 6.1, 6.9, 7.1_
-  - [ ] 7.2 Implement SupportTicketPersistenceAdapter and SupportTicketService
+  - [x] 7.2 Implement SupportTicketPersistenceAdapter and SupportTicketService
     - Create `adapter/out/persistence/SupportTicketPersistenceAdapter.java` implementing ticket, message, attachment persistence via JPA
     - Create `application/service/SupportTicketService.java`:
       - Create ticket: status=OPEN, priority=NORMAL, validate category enum including PAYOUT_ISSUES
@@ -167,7 +167,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
       - Compute avg resolution time: time between creation and `resolved_at` (AC 7.3)
       - Aggregate tickets by category and priority
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 7.1, 7.2, 7.3_
-  - [ ] 7.3 Create SupportTicketController and AdminSupportController
+  - [x] 7.3 Create SupportTicketController and AdminSupportController
     - Create `adapter/in/web/SupportTicketController.java`:
       - `POST /api/support/tickets` — create ticket (accepts multipart/form-data with optional attachments)
       - `GET /api/support/tickets` — list user's tickets with `status`, `page`, `size`, `sort` params
@@ -189,11 +189,11 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Test metrics computation (avg response time, avg resolution time, category/priority breakdown)
     - _Requirements: 6.1, 7.1_
 
-- [ ] 8. Checkpoint — Ensure analytics, dashboard, audit log, and support ticket tests pass
-  - Ensure all tests pass, ask the user if questions arise.
+- [x] 8. Checkpoint — Ensure analytics, dashboard, audit log, and support ticket tests pass
+  - Ensure all tests pass(check with allTests task), ask the user if questions arise.
 
 - [ ] 9. Platform Service — Feature Flag Management
-  - [ ] 9.1 Implement feature flag ports, service, Redis cache, and controllers
+  - [x] 9.1 Implement feature flag ports, service, Redis cache, and controllers
     - Create `application/port/out/FeatureFlagPersistencePort.java` and `application/port/out/FeatureFlagCachePort.java`
     - Create `adapter/out/persistence/FeatureFlagPersistenceAdapter.java` and `adapter/out/redis/FeatureFlagCacheRedisAdapter.java` (5-min TTL)
     - Create `application/service/FeatureFlagService.java`: list all flags, get by key (cache-first), create flag (validate key format: 3-100 chars, uppercase with underscores, 409 on duplicate), update flag (invalidate cache), delete flag (invalidate cache)
@@ -424,7 +424,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - **Validates: Requirements 18.8, 18.10**
     - **Property 13: Disabled Rule Isolation** — verify zero notifications for active=false rules
     - **Validates: Requirements 18.1, 18.9, 20.15**
-  - [ ]* 21.7 Write unit tests for ReminderRuleEvaluationJob
+  - [ ] 21.7 Write unit tests for ReminderRuleEvaluationJob
     - Test each rule type with matching/non-matching bookings
     - Test deduplication behavior, dismissed rule skipping
     - _Requirements: 18.2, 18.3, 18.4, 18.5, 18.6_
