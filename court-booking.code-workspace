@@ -42,6 +42,7 @@
       "court-booking-qa": true,
       "court-booking-infrastructure": true,
       "court-booking-common": true
-    }
+    },
+    "typescript.autoClosingTags": false
   }
 }

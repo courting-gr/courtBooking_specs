@@ -210,7 +210,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - **Validates: Requirements 8.2, 20.9**
 
 - [ ] 10. Platform Service — Admin User Management
-  - [ ] 10.1 Implement user management ports, service, and controller
+  - [x] 10.1 Implement user management ports, service, and controller
     - Create `application/port/out/UserManagementPort.java` with search, detail, status update, token invalidation methods
     - Create `application/service/AdminUserService.java`:
       - List users: paginated, filterable by `role`, `status` (ACTIVE/SUSPENDED/DELETED), `search` (name or email), sortable
@@ -230,7 +230,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - _Requirements: 9.2, 9.5_
 
 - [ ] 11. Platform Service — Dispute Escalation Proxy
-  - [ ] 11.1 Implement dispute proxy to Transaction Service internal API
+  - [x] 11.1 Implement dispute proxy to Transaction Service internal API
     - Create `application/port/out/TransactionServiceDisputePort.java` with methods for listing disputes, getting detail, adding notes
     - Create `adapter/out/http/TransactionServiceDisputeHttpClient.java` calling Transaction Service internal endpoints (`GET /internal/disputes`, `GET /internal/disputes/{disputeId}`, `POST /internal/disputes/{disputeId}/notes`)
     - Create `adapter/in/web/AdminDisputeController.java`:
@@ -242,7 +242,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
 
 - [ ] 12. Platform Service — Platform-Wide Analytics
-  - [ ] 12.1 Implement GetPlatformAnalyticsQuery and AdminAnalyticsController
+  - [x] 12.1 Implement GetPlatformAnalyticsQuery and AdminAnalyticsController
     - Create `application/port/in/GetPlatformAnalyticsQuery.java` and `application/service/PlatformAnalyticsService.java`
     - Implement platform analytics against read replica (`@Transactional(readOnly = true)`):
       - `totalUsers`, `newUsersInPeriod`, `totalCourtOwners`, `totalCourts`, `totalBookings`, `totalRevenueCents`, `totalPlatformFeesCents`
@@ -255,7 +255,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
 
 - [ ] 13. Platform Service — Global Search
-  - [ ] 13.1 Implement global search with PostgreSQL full-text search and internal API
+  - [x] 13.1 Implement global search with PostgreSQL full-text search and internal API
     - Create `application/port/out/CourtSearchPort.java` using `tsvector` GIN indexes for court name/description/address matching
     - Create `application/port/out/TransactionServiceSearchPort.java` with `searchBookings()` calling `GET /internal/bookings/search`
     - Create `application/service/GlobalSearchService.java`: merge court results + booking results + promo code stub (empty until Phase 10), paginate, sort by relevance
@@ -271,7 +271,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - **Validates: Requirements 12.1, 20.8**
 
 - [ ] 14. Platform Service — Bulk Court Visibility Toggle and Court Clone
-  - [ ] 14.1 Extend BulkCourtOperationsUseCase with visibility toggle and clone
+  - [x] 14.1 Extend BulkCourtOperationsUseCase with visibility toggle and clone
     - Extend existing `application/port/in/BulkCourtOperationsUseCase.java` with `bulkToggleVisibility` and `cloneCourtConfig`
     - `bulkToggleVisibility`: validate ownership, max 50 courts (400 `BULK_LIMIT_EXCEEDED`), check preconditions for visible=true (verified + Stripe active), publish `COURT_UPDATED` events, record `COURT_VISIBILITY_TOGGLED` audit logs
     - `cloneCourtConfig`: copy pricing rules, cancellation tiers, availability windows, confirmation mode, amenities from source to target courts. Validate both source and targets belong to authenticated owner
@@ -284,7 +284,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - **Validates: Requirements 13.1, 20.6**
 
 - [ ] 15. Platform Service — Role-Based Access Control Enforcement
-  - [ ] 15.1 Audit and enforce RBAC on all admin endpoints
+  - [x] 15.1 Audit and enforce RBAC on all admin endpoints
     - Review all controllers and ensure Spring Security `@PreAuthorize` or `SecurityConfig` rules enforce:
       - COURT_OWNER endpoints return only the owner's data
       - PLATFORM_ADMIN endpoints have platform-wide access
@@ -294,11 +294,11 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Verify all `/internal/*` endpoints require internal API key or mTLS
     - _Requirements: 14.6_
 
-- [ ] 16. Checkpoint — Ensure feature flags, admin, search, bulk, and RBAC tests pass
+- [x] 16. Checkpoint — Ensure feature flags, admin, search, bulk, and RBAC tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 17. Platform Service — GDPR Data Export, Sessions, Profile Photo
-  - [ ] 17.1 Implement GDPR data export (async ZIP generation)
+  - [x] 17.1 Implement GDPR data export (async ZIP generation)
     - Create `application/port/in/RequestDataExportUseCase.java`, `application/port/in/GetDataExportQuery.java`
     - Create `application/service/GdprDataExportService.java` with `@Async("gdprExportExecutor")`:
       - Collect: profile, courts, bookings (cross-schema), revenue data
@@ -312,7 +312,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
       - `POST /api/users/me/data-export` → 202 Accepted with `{ exportId, status: "PROCESSING" }` or 429
       - `GET /api/users/me/data-exports/{exportId}` → 200 with `{ exportId, status, downloadUrl, expiresAt }` or 404
     - _Requirements: 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 21.7_
-  - [ ] 17.2 Implement active sessions management
+  - [x] 17.2 Implement active sessions management
     - Create `application/port/in/ListActiveSessionsQuery.java`, `application/port/in/RevokeSessionUseCase.java`
     - Create `application/service/SessionManagementService.java`:
       - List sessions from `refresh_tokens` table where `invalidated = false` and `expires_at > now()`
@@ -325,7 +325,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
       - `GET /api/users/me/sessions` → `{ sessions: [{ sessionId, deviceType, browser, ipAddress, lastActivity, current }] }`
       - `DELETE /api/users/me/sessions/{sessionId}` → 204 or 404 or 422
     - _Requirements: 22.1, 22.2, 22.3, 22.4_
-  - [ ] 17.3 Implement profile photo upload
+  - [x] 17.3 Implement profile photo upload
     - Create `application/port/in/UploadProfilePhotoUseCase.java`, `application/port/in/DeleteProfilePhotoUseCase.java`
     - Create `application/service/ProfilePhotoService.java`:
       - Validate format (JPEG/PNG/WebP), max 2MB
@@ -348,7 +348,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - _Requirements: 21.1, 22.1, 23.1_
 
 - [ ] 18. Platform Service — i18n / Accept-Language Routing and Translations API
-  - [ ] 18.1 Implement I18nConfig, ContentLanguageInterceptor, and TranslationsController
+  - [x] 18.1 Implement I18nConfig, ContentLanguageInterceptor, and TranslationsController
     - Create `config/I18nConfig.java` with `AcceptHeaderLocaleResolver` (supported: `el`, `en`; default: `en`) and `ReloadableResourceBundleMessageSource` for `messages_en.properties` / `messages_el.properties`
     - Create `adapter/in/web/interceptor/ContentLanguageInterceptor.java` to inject `Content-Language` response header on all API responses
     - Implement language fallback logic for court data: requested language → other language → "Unnamed Court"
@@ -365,7 +365,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - _Requirements: 30.1, 30.2, 30.8_
 
 - [ ] 19. Platform Service — Analytics Events Kafka Consumer
-  - [ ] 19.1 Implement AnalyticsEventKafkaConsumer
+  - [x] 19.1 Implement AnalyticsEventKafkaConsumer
     - Create `adapter/in/kafka/AnalyticsEventKafkaConsumer.java`:
       - Consumer group: `platform-service-analytics-consumer`
       - Topic: `analytics-events` with `auto.offset.reset=latest`
@@ -375,11 +375,11 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
       - Log and skip malformed events at WARN level without blocking consumer
     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5, 17.6_
 
-- [ ] 20. Checkpoint — Ensure GDPR, sessions, profile photo, i18n, and Kafka consumer tests pass
+- [x] 20. Checkpoint — Ensure GDPR, sessions, profile photo, i18n, and Kafka consumer tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 21. Transaction Service — Internal APIs and Reminder Rule Evaluation Job
-  - [ ] 21.1 Implement internal booking search API
+  - [x] 21.1 Implement internal booking search API
     - Create `adapter/in/web/InternalBookingSearchController.java`:
       - `GET /internal/bookings/search?courtOwnerId={id}&q={query}&limit=20`
     - Create `application/port/in/SearchBookingsInternalQuery.java` and service
@@ -387,7 +387,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Mask customer data in results (partial name `K***`, partial phone `+30 69** *** *45`)
     - Secure with internal API key header (`X-Internal-Api-Key`)
     - _Requirements: 12.3_
-  - [ ] 21.2 Implement internal dispute API
+  - [x] 21.2 Implement internal dispute API
     - Create `adapter/in/web/InternalDisputeController.java`:
       - `GET /internal/disputes` — list disputes with `status`, `page`, `size`, `sort` params
       - `GET /internal/disputes/{disputeId}` — dispute detail with booking context, payment timeline
@@ -395,7 +395,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Query disputes from `transaction.payments` where `dispute_status IS NOT NULL`
     - Secure with internal API key header
     - _Requirements: 10.1, 10.2, 10.3_
-  - [ ] 21.3 Implement ReminderRuleEvaluationJob (Quartz, every 30 min)
+  - [x] 21.3 Implement ReminderRuleEvaluationJob (Quartz, every 30 min)
     - Create `adapter/in/scheduler/ReminderRuleEvaluationJob.java` implementing Quartz `Job`
     - Fetch active rules from Platform Service via `GET /internal/reminder-rules/active`
     - Evaluate each rule type:
@@ -409,12 +409,12 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Skip rules with `active = false`
     - Register Quartz job with cron `0 0/30 * * * ?`
     - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 18.7, 18.8, 18.9, 18.10_
-  - [ ] 21.4 Implement internal reminder rules endpoint on Platform Service
+  - [x] 21.4 Implement internal reminder rules endpoint on Platform Service
     - Create `adapter/in/web/InternalReminderRulesController.java` on Platform Service:
       - `GET /internal/reminder-rules/active` — returns all active rules with court owner info
     - Secure with internal API key
     - _Requirements: 18.1_
-  - [ ] 21.5 Implement reminder dismissal endpoint on Platform Service
+  - [x] 21.5 Implement reminder dismissal endpoint on Platform Service
     - Create endpoint on Platform Service:
       - `POST /api/settings/reminder-rules/{ruleId}/dismiss/{bookingId}`
     - Store dismissal in Redis: `reminder-dismissed:{ruleId}:{bookingId}` with 30-day TTL
@@ -424,16 +424,16 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - **Validates: Requirements 18.8, 18.10**
     - **Property 13: Disabled Rule Isolation** — verify zero notifications for active=false rules
     - **Validates: Requirements 18.1, 18.9, 20.15**
-  - [ ] 21.7 Write unit tests for ReminderRuleEvaluationJob
+  - [x] 21.7 Write unit tests for ReminderRuleEvaluationJob
     - Test each rule type with matching/non-matching bookings
     - Test deduplication behavior, dismissed rule skipping
     - _Requirements: 18.2, 18.3, 18.4, 18.5, 18.6_
 
-- [ ] 22. Checkpoint — Ensure Transaction Service internal APIs and reminder job tests pass
+- [x] 22. Checkpoint — Ensure Transaction Service internal APIs and reminder job tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 23. Admin Web Portal — Project Scaffolding, Dockerfile, and CI/CD
-  - [ ] 23.1 Scaffold Vite + React 18 + TypeScript project
+- [x] 23. Admin Web Portal — Project Scaffolding, Dockerfile, and CI/CD
+  - [x] 23.1 Scaffold Vite + React 18 + TypeScript project
     - Initialize project with Vite, React 18+, TypeScript 5+ (strict mode: `strict: true`, `noUncheckedIndexedAccess: true`)
     - Install core dependencies: React Router v6, Ant Design v5, Axios, TanStack Query v5, react-i18next + i18next-http-backend, dayjs, Zustand, Zod, Recharts, SockJS + @stomp/stompjs, DOMPurify (for XSS sanitization — Req 14.8)
     - Configure ESLint with `eslint-plugin-react-hooks`, `eslint-plugin-jsx-a11y`, Prettier
@@ -441,23 +441,23 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Create `.env.local` (localhost:8080 Platform, localhost:8081 Transaction), `.env.staging`, `.env.production` with API base URLs
     - Reference `figma-reference/src/` for component structure and layout intent
     - _Requirements: 24.1, 24.2, 24.4, 24.7_
-  - [ ] 23.2 Generate TypeScript API types from OpenAPI specs
+  - [x] 23.2 Generate TypeScript API types from OpenAPI specs
     - Install `openapi-typescript` as dev dependency
     - Create npm script `generate-api-types` that generates types from `openapi-platform-service.yaml` and `openapi-transaction-service.yaml`
     - Generate types to `src/types/api/platform.ts` and `src/types/api/transaction.ts`
     - Commit generated types to repository
     - _Requirements: 24.3_
-  - [ ] 23.3 Create Dockerfile for admin-web (multi-stage Node → NGINX)
+  - [x] 23.3 Create Dockerfile for admin-web (multi-stage Node → NGINX)
     - Stage 1: Node.js build (`npm ci && npm run build`)
     - Stage 2: NGINX serve with gzip compression, SPA fallback routing (`try_files $uri /index.html`)
     - Configure CSP headers in NGINX config: `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.courtbooking.gr wss://api.courtbooking.gr; font-src 'self';`
     - _Requirements: 24.5, 14.7_
-  - [ ] 23.4 Create GitHub Actions CI/CD pipeline for admin-web
+  - [x] 23.4 Create GitHub Actions CI/CD pipeline for admin-web
     - Workflow: `.github/workflows/ci.yml`
     - Steps: checkout → install (`npm ci`) → lint (`eslint .`) → type check (`tsc --noEmit`) → test (`vitest --run`) → build (`vite build`) → Docker build → Docker push to DigitalOcean Container Registry
     - Trigger on push to main and PRs
     - _Requirements: 24.6_
-  - [ ] 23.5 Set up Axios instances, auth store, CSRF integration, and secure cookies
+  - [x] 23.5 Set up Axios instances, auth store, CSRF integration, and secure cookies
     - Create centralized Axios instance in `src/lib/api.ts` with:
       - JWT Bearer injection from in-memory storage (NOT localStorage)
       - CSRF token injection (`X-CSRF-Token` header) on POST/PUT/DELETE/PATCH
@@ -468,32 +468,32 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Create Zustand UI store (`src/stores/uiStore.ts`): sidebarCollapsed, theme, toggleSidebar
     - Configure cookie attributes: `HttpOnly`, `Secure`, `SameSite=Strict` on all cookies (set via Axios `withCredentials: true`)
     - _Requirements: 24.8, 14.1, 14.13_
-  - [ ] 23.6 Set up TanStack Query provider with stale-while-revalidate and mutation-based cache invalidation
+  - [x] 23.6 Set up TanStack Query provider with stale-while-revalidate and mutation-based cache invalidation
     - Configure `QueryClient` with `staleTime: 5 * 60 * 1000` (5 min), `gcTime: 10 * 60 * 1000` (10 min), `retry: 1`, `refetchOnWindowFocus: true`
     - Create query key factories in `src/lib/queryKeys.ts`: `dashboardKeys`, `courtKeys`, `bookingKeys`, `analyticsKeys`, `supportKeys`, `adminKeys`, `settingsKeys`
     - Implement mutation-based cache invalidation pattern: creating a court invalidates `courtKeys.lists()`, confirming a booking invalidates `bookingKeys.lists()`, etc.
     - _Requirements: 24.2, 29.6_
-  - [ ] 23.7 Set up i18n with react-i18next and language selector
+  - [x] 23.7 Set up i18n with react-i18next and language selector
     - Configure i18next with HTTP backend loading from Platform Service translations API (`/api/admin/translations?namespace={{ns}}&language={{lng}}`)
     - Set up fallback to local bundles (`public/locales/el/`, `public/locales/en/`)
     - Create initial translation JSON files for namespaces: `common`, `dashboard`, `courts`, `bookings`, `analytics`, `support`, `settings`, `admin`
     - Supported languages: `el` (Greek), `en` (English); fallback: `en`
     - _Requirements: 30.6, 30.7, 15.10_
-  - [ ] 23.8 Set up WebSocket client (SockJS + STOMP)
+  - [x] 23.8 Set up WebSocket client (SockJS + STOMP)
     - Create WebSocket client in `src/lib/websocket.ts` connecting to Transaction Service `/ws` endpoint
     - Implement auto-reconnect with exponential backoff (1s, 2s, 4s, max 30s)
     - Create `useWebSocket` hook for subscribing to topics
     - Display "Live updates paused" indicator in header when disconnected
     - On reconnect: fetch full data refresh for currently visible page
     - _Requirements: 24.9, 28.3, 28.5_
-  - [ ] 23.9 Set up content sanitization for XSS prevention
+  - [x] 23.9 Set up content sanitization for XSS prevention
     - Install and configure DOMPurify
     - Create `sanitizeHtml` utility wrapping DOMPurify with allowed tags: `p`, `b`, `i`, `em`, `strong`, `a`
     - Apply sanitization to all user-generated content before rendering (support ticket messages, notes, etc.)
     - _Requirements: 14.8_
 
-- [ ] 24. Admin Web Portal — Layout, Routing, Auth, and Global UX Patterns
-  - [ ] 24.1 Implement AppLayout with Sidebar, Header, and Breadcrumb
+- [x] 24. Admin Web Portal — Layout, Routing, Auth, and Global UX Patterns
+  - [x] 24.1 Implement AppLayout with Sidebar, Header, and Breadcrumb
     - Create `src/components/layout/AppLayout.tsx` using Ant Design `Layout`, `Layout.Sider` (dark theme #001529, collapsible 240px→80px), `Layout.Header` (white, 64px), `Layout.Content` (#F5F5F5 background, 24px padding)
     - Implement Sidebar using Ant Design `Menu` with `Menu.Item` and `Menu.SubMenu`:
       - Main nav: Dashboard (HomeOutlined), Courts (BankOutlined), Bookings (CalendarOutlined), Analytics (BarChartOutlined), Support (MessageOutlined), Settings (SettingOutlined), Audit Log (FileSearchOutlined)
@@ -505,7 +505,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
       - Right: Language switcher (`Segmented` with EL/EN options — persists to user profile), notification bell (`Badge` with count + `Popover` dropdown), user `Dropdown` with avatar
     - Reference `figma-reference/src/app/components/Sidebar.tsx`, `Header.tsx`, `Layout.tsx` for structure
     - _Requirements: 15.3, 15.5, 15.6, 30.6_
-  - [ ] 24.2 Implement route definitions with lazy loading, role guards, and 404/error pages
+  - [x] 24.2 Implement route definitions with lazy loading, role guards, and 404/error pages
     - Create `ProtectedRoute` component (redirect unauthenticated to /login)
     - Create `RoleGuard` component (redirect non-admin to dashboard with "Access Denied" `notification.error()` for admin routes)
     - Define all routes with `React.lazy()` and `Suspense` fallback to `Skeleton` page:
@@ -533,20 +533,20 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Create 404 Not Found page and generic error fallback page with navigation back to dashboard
     - Reference `figma-reference/src/app/routes.tsx` for route structure
     - _Requirements: 15.2, 15.4, 16.7, 29.7_
-  - [ ] 24.3 Implement OAuth login page
+  - [x] 24.3 Implement OAuth login page
     - Create Login page with Google, Facebook, Apple OAuth buttons
     - JWT token storage in memory (Zustand store, NOT localStorage)
     - After login: fetch CSRF token via `GET /api/auth/csrf-token`, store in auth store
     - Language toggle (EL/EN) on login page footer
     - Reference `figma-reference/src/app/pages/auth/Login.tsx` for layout
     - _Requirements: 15.4_
-  - [ ] 24.4 Implement session timeout with warning dialog
+  - [x] 24.4 Implement session timeout with warning dialog
     - Track user activity (mouse, keyboard, scroll events)
     - After 25 minutes of inactivity: show Ant Design `Modal` warning with countdown timer (5 min remaining), "Stay Logged In" button (extends session via CSRF token refresh), "Log Out" button
     - After 30 minutes: auto-logout, redirect to /login
     - Reference `figma-reference/src/app/pages/UIStates.tsx` (Frame 6 — Session Timeout Warning) for dialog design
     - _Requirements: 14.2_
-  - [ ] 24.5 Implement global toast notifications and error handling
+  - [x] 24.5 Implement global toast notifications and error handling
     - Configure Ant Design `notification` (toast) for success/error feedback on ALL user actions
     - Centralized error handling strategy:
       - Network errors (timeout, 5xx): `notification.error()` with "Something went wrong" + "Retry" button
@@ -555,14 +555,14 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
       - 429 (rate limited): read `Retry-After` header, show `Alert` with countdown timer, disable action button until timer expires
     - Create `ErrorBoundary` component catching rendering errors with fallback UI + retry option
     - _Requirements: 15.7, 15.9, 29.1, 29.2, 29.5_
-  - [ ] 24.6 Implement loading skeletons and optimistic UI updates
+  - [x] 24.6 Implement loading skeletons and optimistic UI updates
     - Create `PageSkeleton` component using Ant Design `Skeleton` for all data-fetching pages (dashboard cards, tables, detail drawers)
     - Loading indicators appear after 300ms delay (perceived-as-instant threshold)
     - Use `Spin` for action buttons during API calls, `Progress` for file uploads
     - Implement optimistic UI updates for: court visibility toggle, reminder rule enable/disable, notification mark-as-read. Revert with error toast on failure
     - Reference `figma-reference/src/app/pages/UIStates.tsx` (Frame 2 — Loading Skeletons) for skeleton patterns
     - _Requirements: 15.8, 29.3, 29.4, 29.6_
-  - [ ] 24.7 Implement notification bell and dropdown
+  - [x] 24.7 Implement notification bell and dropdown
     - Notification bell icon in header with `Badge` showing unread count from `GET /api/notifications?unreadOnly=true`
     - `Popover` dropdown showing 20 most recent notifications: type icon, title, body, relative timestamp, read/unread indicator
     - Click notification: mark as read via `POST /api/notifications/{id}/read`, navigate to relevant page
@@ -570,17 +570,17 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Subscribe to WebSocket `/user/queue/notifications` for real-time updates
     - Reference `figma-reference/src/app/pages/UIStates.tsx` (Frame 5 — Notification Dropdown) for design
     - _Requirements: 28.1, 28.2, 28.3_
-  - [ ] 24.8 Implement Web Push notification registration
+  - [x] 24.8 Implement Web Push notification registration
     - Register for Web Push via `POST /api/notifications/device` with platform `WEB` using W3C Push API with VAPID keys
     - Request notification permission on first login
     - Court owners receive push notifications even when browser tab is closed
     - _Requirements: 28.4_
 
-- [ ] 25. Checkpoint — Ensure admin portal scaffolding, layout, routing, and auth work
+- [x] 25. Checkpoint — Ensure admin portal scaffolding, layout, routing, and auth work
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 26. Admin Web Portal — Dashboard Page
-  - [ ] 26.1 Implement Dashboard page with stat cards, needs-attention widget, notifications, court summary, and quick actions
+- [x] 26. Admin Web Portal — Dashboard Page
+  - [x] 26.1 Implement Dashboard page with stat cards, needs-attention widget, notifications, court summary, and quick actions
     - Use Ant Design `Statistic` inside `Card` for 4 stat cards: Today's Bookings (blue), Pending Confirmations (amber, clickable → navigates to /bookings/pending), Revenue This Month (green, with `TrendingUp` comparison), Occupancy Today (purple, circular progress via custom SVG or Ant `Progress` type="circle")
     - "Needs Attention" widget: `Card` with grouped alert items (unpaid bookings, pending confirmations) using `Alert` or custom list. Each item has: warning icon, title, customer (masked), action buttons row (View Details link, Contact secondary button, Cancel Booking danger text, Dismiss ghost)
     - Recent Notifications: `Card` with `List` of 5 items, each with icon, message, relative timestamp, unread dot. "View All" link at bottom
@@ -595,8 +595,8 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Reference `figma-reference/src/app/pages/Dashboard.tsx` for layout
     - _Requirements: 1.1, 1.8, 1.9, 15.2, 27.5_
 
-- [ ] 27. Admin Web Portal — Court Management Pages
-  - [ ] 27.1 Implement Courts List page
+- [x] 27. Admin Web Portal — Court Management Pages
+  - [x] 27.1 Implement Courts List page
     - Use Ant Design `Table` with `columns` config for court list from `GET /api/courts/owner/me`
     - Columns: thumbnail (`Image`), name, type (`Tag` colored: Tennis=green, Padel=blue, Basketball=orange, Football=red), location type (`Tag`), base price (€/session), confirmation mode (`Tag`: Instant=green, Manual=amber), visibility (`Switch`), actions (edit `Button` icon, delete `Button` icon)
     - Filter bar above table: court type `Select`, location type `Segmented` (All/Indoor/Outdoor), `Input.Search`, visibility `Select`
@@ -610,7 +610,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - TanStack Query: `useCourts()` with `courtKeys.lists()`
     - Reference `figma-reference/src/app/pages/Courts.tsx` for layout
     - _Requirements: 25.1, 25.9_
-  - [ ] 27.2 Implement Create/Edit Court Drawer
+  - [x] 27.2 Implement Create/Edit Court Drawer
     - Use Ant Design `Drawer` (right-side, 640px) with `Form` + `Form.Item` with Zod validation
     - Form sections: Basic Info (name Greek/English, description Greek/English), Court Configuration (type `Select`, location `Radio`, duration `InputNumber`, capacity `InputNumber`, base price `InputNumber` with € prefix), Booking Settings (confirmation mode `Radio` with conditional timeout `InputNumber`, waitlist `Switch`), Address (`Input` + map placeholder), Images (`Upload.Dragger` with JPEG/PNG/WebP, max 10MB, max 20 images), Amenities (`Checkbox.Group` grid)
     - Create: `POST /api/courts` + `POST /api/courts/{courtId}/images`
@@ -619,7 +619,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Toast: success/error notification on all actions
     - Reference `figma-reference/src/app/pages/Courts.tsx` (drawer section) for layout
     - _Requirements: 25.2, 25.3, 25.4, 14.5_
-  - [ ] 27.3 Implement Court Detail page with tabbed sub-pages
+  - [x] 27.3 Implement Court Detail page with tabbed sub-pages
     - Use Ant Design `Tabs` for: Details, Availability, Holidays, Pricing, Cancellation Policy
     - Back button → Courts list
     - **Availability tab**: Visual weekly schedule with time bars per day (Mon-Sun). Edit icon per day opens `TimePicker` range. "Add Window" per day for split schedules. "Save Schedule" button. Date overrides section: `Calendar` (mini) with blocked dates highlighted + override list with delete. "Add Override" button opens `Drawer` with date picker, reason, time range
@@ -629,22 +629,22 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - APIs: `GET/PUT /api/courts/{courtId}/availability/windows`, `GET/POST/DELETE /api/courts/{courtId}/availability/overrides`, `GET /api/holidays/national`, `GET/POST/PUT/DELETE /api/holidays/custom`, `POST /api/holidays/apply`
     - Reference `figma-reference/src/app/pages/CourtDetail.tsx` for all tab layouts
     - _Requirements: 25.5, 25.6, 25.7_
-  - [ ] 27.4 Implement Holiday Calendar page (separate from court detail)
+  - [x] 27.4 Implement Holiday Calendar page (separate from court detail)
     - Accessible from sidebar navigation
     - Show national holidays (`GET /api/holidays/national`), custom holidays (`GET/POST/PUT/DELETE /api/holidays/custom`)
     - Bulk holiday application to courts (`POST /api/holidays/apply`) with court multi-select and conflict detection
     - Calendar view showing all holidays across all courts for the year
     - _Requirements: 25.8_
 
-- [ ] 28. Admin Web Portal — Booking Management Pages
-  - [ ] 28.1 Implement Bookings List page with filterable table
+- [x] 28. Admin Web Portal — Booking Management Pages
+  - [x] 28.1 Implement Bookings List page with filterable table
     - Use Ant Design `Table` with filterable columns from `GET /api/bookings` (Transaction Service)
     - Columns: date, time, court name, customer name (masked), status (`Tag` color-coded: Confirmed=success, Pending=warning, Cancelled=error, Manual=processing, Completed=default, No-Show=volcano), payment status, actions
     - Filter bar: date range `RangePicker`, court `Select`, status `Select`, payment status `Select`, `Input.Search`
     - Click row → opens `BookingDetailDrawer`
     - Loading: `Skeleton` table
     - _Requirements: 26.1_
-  - [ ] 28.2 Implement Booking Calendar View
+  - [x] 28.2 Implement Booking Calendar View
     - Use Ant Design `Calendar` or full-calendar library for daily/weekly/monthly views
     - Color-coded booking blocks by status (green=confirmed, yellow=pending, blue=manual, red=cancelled)
     - Court selector `Select` at top, date navigation, view toggle (Day/Week/Month `Segmented`)
@@ -655,7 +655,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - WebSocket: subscribe to `/topic/bookings/{courtId}` for real-time updates
     - Reference `figma-reference/src/app/pages/Bookings.tsx` (calendar tab) for layout
     - _Requirements: 26.2, 26.6, 26.7_
-  - [ ] 28.3 Implement Pending Bookings Queue page
+  - [x] 28.3 Implement Pending Bookings Queue page
     - List of pending booking cards from `GET /api/bookings/pending`
     - Each card: customer name (masked), court, date/time, amount held, countdown timer (auto-cancel), Confirm (`Button` success) and Reject (`Button` danger outline) with optional message `TextArea`
     - Bulk actions `Dropdown`: "Confirm All", "Reject All" via `POST /api/bookings/bulk-action`
@@ -663,14 +663,14 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Empty state: `Empty` with "No pending bookings"
     - Reference `figma-reference/src/app/pages/Bookings.tsx` (pending tab) for layout
     - _Requirements: 26.3_
-  - [ ] 28.4 Implement Manual Booking Creation form
+  - [x] 28.4 Implement Manual Booking Creation form
     - Court selector `Select`, date `DatePicker`, time slot grid (available slots from availability API), duration `InputNumber`
     - Optional customer info: name, phone, email, notes
     - Recurring toggle `Switch`: "Repeat weekly" with weeks `InputNumber` (1-12)
     - "Create Booking" `Button` via `POST /api/bookings/manual` or `POST /api/bookings/recurring`
     - Reference `figma-reference/src/app/pages/Bookings.tsx` (manual tab) for layout
     - _Requirements: 26.4_
-  - [ ] 28.5 Implement BookingDetailDrawer component
+  - [x] 28.5 Implement BookingDetailDrawer component
     - Use Ant Design `Drawer` (right-side, 640px)
     - Sections: Booking Info (court link, date, time, duration, type tag, people, confirmation mode), Customer Info (masked email/phone with "Show full" `Button` that triggers `CUSTOMER_DATA_ACCESSED` audit log), Payment Details (amount, platform fee, court owner net, payment status tag, Stripe payment ID link, payment method, payment timeline with steps), Audit Trail (timestamped action list with actor and role)
     - Sticky bottom actions based on status:
@@ -681,8 +681,8 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Reference `figma-reference/src/app/components/BookingDetailDrawer.tsx` for layout
     - _Requirements: 26.5, 14.3, 14.4_
 
-- [ ] 29. Admin Web Portal — Analytics Pages
-  - [ ] 29.1 Implement Analytics page with Revenue, Usage, and Heatmap tabs
+- [x] 29. Admin Web Portal — Analytics Pages
+  - [x] 29.1 Implement Analytics page with Revenue, Usage, and Heatmap tabs
     - Use Ant Design `Tabs` for Revenue, Usage, Heatmap
     - Controls bar: `RangePicker` with preset buttons (7d/30d/90d/1y `Segmented`), court `Select`, court type `Select`, Export `Dropdown` (CSV, PDF)
     - **Revenue tab**: 4 stat cards (`Card` + `Statistic`: Total Bookings with % change, Revenue Gross, Platform Fees, Revenue Net with green highlight). Revenue trend `LineChart` (Recharts) with current vs previous period (dashed). Revenue by Court `Table` with sortable columns and occupancy `Progress` bars. Total row in bold
@@ -695,8 +695,8 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Reference `figma-reference/src/app/pages/Analytics.tsx` for all tab layouts
     - _Requirements: 15.2, 2.1, 3.1, 4.1_
 
-- [ ] 30. Admin Web Portal — Support Tickets Page
-  - [ ] 30.1 Implement Support page with split-panel layout
+- [x] 30. Admin Web Portal — Support Tickets Page
+  - [x] 30.1 Implement Support page with split-panel layout
     - Left panel (400px): ticket list with `Input.Search`, filter tabs (All/Open/In Progress/Resolved with counts), ticket cards showing subject, category `Tag`, priority `Tag`, status `Tag`, timestamp, assigned avatar. Selected ticket highlighted with blue left border. "New Ticket" `Button`
     - Right panel: ticket detail header (subject, status `Select` dropdown, priority, category tags), info bar (created date, ticket ID, related booking link, assigned to `Select`), message thread (chat-style: customer messages left-aligned gray bubble, agent messages right-aligned blue bubble, attachment chips), reply box (`TextArea` + "Attach Files" `Button` + "Send Reply" `Button`)
     - Collapsible right sidebar: customer info card (masked email/phone), booking context card, ticket metadata
@@ -704,8 +704,8 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Reference `figma-reference/src/app/pages/Support.tsx` for layout
     - _Requirements: 15.2, 6.1, 6.2, 6.3, 6.4_
 
-- [ ] 31. Admin Web Portal — Settings Page
-  - [ ] 31.1 Implement Settings page with vertical tabs
+- [x] 31. Admin Web Portal — Settings Page
+  - [x] 31.1 Implement Settings page with vertical tabs
     - Use Ant Design `Tabs` with `tabPosition="left"` (200px sidebar)
     - **Profile & Business tab**: Two-column `Form`. Left: profile photo `Upload` circle, display name `Input`, email (read-only with edit icon), phone `Input`, language `Radio.Group` (Greek/English). Right: business name, tax ID (AFM), business type `Select`, business address `TextArea`, contact phone. "Save Changes" `Button`. Warning `Alert` when changing verified business info
     - **Notification Preferences tab**: `Table` with columns: Event Type (with icon), Email `Switch`, Push `Switch`, In-App `Switch`. Rows: New Booking, Booking Cancelled, Pending Confirmation, Payment Received, Payout Completed, Payment Dispute, Reminder Alerts. Do Not Disturb section: enable `Switch`, start/end `TimePicker`. "Save Preferences" `Button`
@@ -717,8 +717,8 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Reference `figma-reference/src/app/pages/Settings.tsx` for all tab layouts
     - _Requirements: 19.1, 19.2, 19.3, 19.4, 19.5, 19.6, 19.7, 27.4_
 
-- [ ] 32. Admin Web Portal — Audit Log Page
-  - [ ] 32.1 Implement Audit Log page with filterable table and expandable rows
+- [x] 32. Admin Web Portal — Audit Log Page
+  - [x] 32.1 Implement Audit Log page with filterable table and expandable rows
     - Use Ant Design `Table` with expandable rows from `GET /api/audit-logs`
     - Filter bar: date range `RangePicker`, action type `Select`, court `Select`, `Input.Search`
     - Columns: timestamp, action (`Tag` colored by type), court/entity, details summary, expand chevron
@@ -728,23 +728,23 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Reference `figma-reference/src/app/pages/AuditLog.tsx` for layout
     - _Requirements: 15.2, 5.1_
 
-- [ ] 33. Checkpoint — Ensure all court owner portal pages render correctly
+- [x] 33. Checkpoint — Ensure all court owner portal pages render correctly
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 34. Admin Web Portal — Platform Admin Pages
-  - [ ] 34.1 Implement User Management page (PLATFORM_ADMIN)
+- [x] 34. Admin Web Portal — Platform Admin Pages
+  - [x] 34.1 Implement User Management page (PLATFORM_ADMIN)
     - Use Ant Design `Table` with `Input.Search` and role `Select` filter from `GET /api/admin/users`
     - Columns: avatar + name, email (masked), role (`Tag` colored: Customer=blue, Court Owner=purple, Support Agent=green, Admin=red), status (`Tag`: Active=green, Suspended=red), verified (checkmark/x for court owners), Stripe (Connected/Not Connected for court owners), registered date, actions (View link, Suspend/Unsuspend link)
     - Click row → opens detail `Drawer` (480px): profile section (avatar, name, full email), info grid (role, status, registered, active sessions), linked OAuth providers, court owner status (verified, Stripe connected). Actions: "Send Email" `Button`, "Suspend User" danger `Button` (with required reason `TextArea` in `Modal.confirm()`) or "Unsuspend User" success `Button`
     - Reference `figma-reference/src/app/pages/admin/Users.tsx` for layout
     - _Requirements: 16.1, 9.1, 9.2, 9.5, 9.7_
-  - [ ] 34.2 Implement Verification Review Queue page (PLATFORM_ADMIN)
+  - [x] 34.2 Implement Verification Review Queue page (PLATFORM_ADMIN)
     - Filter tabs: Pending (with count badge), Approved, Rejected
     - Card list for pending requests: business name, tax ID, business type, owner name, submitted date, SLA countdown (amber if <24h, red if exceeded), document count with "View Documents" link (expandable grid of document previews), re-submission badge if applicable with previous rejection reason
     - Two-column action area per card: Approve (optional notes `TextArea` + green `Button`) and Reject (required reason `TextArea` + red `Button`)
     - Reference `figma-reference/src/app/pages/admin/Verifications.tsx` for layout
     - _Requirements: 16.2_
-  - [ ] 34.3 Implement Feature Flags page (PLATFORM_ADMIN)
+  - [x] 34.3 Implement Feature Flags page (PLATFORM_ADMIN)
     - Use Ant Design `Table` from `GET /api/admin/feature-flags`
     - Columns: flag key (monospace `Tag`), description, status (`Switch` toggle: enabled=green, disabled=gray), last modified date, modified by
     - "Add Flag" `Button` → `Modal` with key `Input`, description `TextArea`, enabled `Switch`
@@ -752,14 +752,14 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Status legend at bottom
     - Reference `figma-reference/src/app/pages/admin/FeatureFlags.tsx` for layout
     - _Requirements: 16.3, 8.1, 8.2_
-  - [ ] 34.4 Implement Platform Analytics page (PLATFORM_ADMIN)
+  - [x] 34.4 Implement Platform Analytics page (PLATFORM_ADMIN)
     - Global search with tabs: All, Courts, Bookings, Users (with counts)
     - Search bar (full width, prominent) triggering `GET /api/admin/search`
     - Result cards: entity type icon, primary text, secondary text, status `Tag`, "View" link
     - Platform metrics dashboard from `GET /api/admin/analytics`: stat cards (total users, courts, bookings, revenue), user growth `LineChart`, bookings by court type `BarChart`, top 10 courts `Table`
     - Reference `figma-reference/src/app/pages/admin/PlatformAnalytics.tsx` for search layout
     - _Requirements: 16.4, 11.1, 12.5_
-  - [ ] 34.5 Implement Support Metrics page (PLATFORM_ADMIN)
+  - [x] 34.5 Implement Support Metrics page (PLATFORM_ADMIN)
     - Stat cards: Total Tickets, Avg Response Time, Avg Resolution Time, Resolution Rate (with trend indicators)
     - Charts: Tickets by Category `BarChart`, Tickets Over Time `LineChart`, Status Distribution `PieChart` with breakdown grid
     - Agent Performance `Table`: agent name + avatar, assigned tickets, avg response time, resolved count, satisfaction score
@@ -767,7 +767,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - API: `GET /api/admin/support/metrics`
     - Reference `figma-reference/src/app/pages/admin/SupportMetrics.tsx` for layout
     - _Requirements: 16.5, 7.1_
-  - [ ] 34.6 Implement Dispute Management page (PLATFORM_ADMIN)
+  - [x] 34.6 Implement Dispute Management page (PLATFORM_ADMIN)
     - Filter tabs: All, Open, Under Review, Won, Lost
     - Use Ant Design `Table` from `GET /api/admin/disputes`
     - Columns: dispute ID (mono), booking ID (link), court owner, customer, amount, reason (`Tag`), status (`Tag`), created date, actions
@@ -775,8 +775,8 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Reference `figma-reference/src/app/pages/admin/Disputes.tsx` for layout
     - _Requirements: 16.6, 10.1, 10.2, 10.3_
 
-- [ ] 35. Admin Web Portal — Onboarding Pages
-  - [ ] 35.1 Implement Stripe Connect onboarding status page
+- [x] 35. Admin Web Portal — Onboarding Pages
+  - [x] 35.1 Implement Stripe Connect onboarding status page
     - Full-page card with step indicator (3 steps: Account Created, Identity Verification, Bank Account) using custom step component
     - Status badge (PENDING amber, ACTIVE green, RESTRICTED red)
     - Status message `Alert` with description
@@ -785,14 +785,14 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Payout details section (disabled/grayed when not active): payout schedule, balance, payout history
     - Reference `figma-reference/src/app/pages/onboarding/StripeConnect.tsx` for layout
     - _Requirements: 27.1, 27.4_
-  - [ ] 35.2 Implement Business Verification submission form
+  - [x] 35.2 Implement Business Verification submission form
     - Card with `Form`: business name, tax ID (AFM with Greek format hint), business type `Select`, business address `TextArea`, document upload `Upload.Dragger` (PDF/JPEG/PNG, max 10MB)
     - Status banners: PENDING_REVIEW (amber), APPROVED (green), REJECTED (red with reason + "Re-submit" button)
     - Pre-fill from previous submission on re-submit
     - "Submit for Verification" primary `Button` via `POST /api/verification`
     - Reference `figma-reference/src/app/pages/onboarding/BusinessVerification.tsx` for layout
     - _Requirements: 27.2, 27.3_
-  - [ ] 35.3 Implement conditional onboarding banners on all pages
+  - [x] 35.3 Implement conditional onboarding banners on all pages
     - Create `OnboardingBannerProvider` component that checks user profile on mount
     - Show amber `Alert` banner at top of every page when:
       - Stripe Connect not ACTIVE: "Complete Payment Setup" with action button
@@ -800,8 +800,8 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Courts list shows "Hidden — pending verification" or "Hidden — Stripe not connected" badge on affected courts
     - _Requirements: 27.5_
 
-- [ ] 36. Admin Web Portal — Form Validation and Confirmation Modals
-  - [ ] 36.1 Implement consistent form validation and confirmation modals
+- [x] 36. Admin Web Portal — Form Validation and Confirmation Modals
+  - [x] 36.1 Implement consistent form validation and confirmation modals
     - Configure Ant Design `Form` with inline field-level validation, server-side error mapping (400 `errors[]` → specific `Form.Item` errors), form state preservation on failure
     - Create reusable confirmation modals using `Modal.confirm()`:
       - Delete Court: "This will permanently delete {name}..." with Cancel/Delete buttons
@@ -811,11 +811,11 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Reference `figma-reference/src/app/pages/UIStates.tsx` (Frame 4 — Confirmation Modals) for designs
     - _Requirements: 29.1_
 
-- [ ] 37. Checkpoint — Ensure all admin portal pages and platform admin pages work
+- [x] 37. Checkpoint — Ensure all admin portal pages and platform admin pages work
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 38. Admin Web Portal — Vitest Unit Tests
-  - [ ] 38.1 Write Vitest tests for core hooks and utilities
+- [x] 38. Admin Web Portal — Vitest Unit Tests
+  - [x] 38.1 Write Vitest tests for core hooks and utilities
     - Test TanStack Query hooks (mock API responses, verify cache behavior)
     - Test auth store (login, logout, token refresh, CSRF token)
     - Test WebSocket reconnection logic
@@ -824,7 +824,7 @@ This plan implements Phase 6 across three codebases: `court-booking-platform-ser
     - Test sanitization utility (DOMPurify wrapper)
     - _Requirements: 24.1_
 
-- [ ] 39. Final Checkpoint — Full integration verification
+- [x] 39. Final Checkpoint — Full integration verification
   - Ensure all backend tests pass (Platform Service + Transaction Service)
   - Ensure all frontend tests pass (admin-web Vitest)
   - Verify all API endpoints are accessible through NGINX routing
