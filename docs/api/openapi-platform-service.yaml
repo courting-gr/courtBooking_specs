@@ -175,6 +175,71 @@ paths:
         '204':
           description: Logged out successfully
 
+  /api/auth/unlock/{token}:
+    get:
+      tags: [Auth]
+      summary: Unlock a locked-out account
+      description: |
+        Consumes a one-time unlock token sent by email after an account-level lockout
+        (Req 5.5). On success the account lock and the IP + email failed-attempt counters
+        are cleared and the browser is redirected to the admin web login with
+        `?unlocked=true`. Token-via-link endpoint: no JWT required (bypasses the JWT filter).
+        Invalid, expired, or already-used tokens yield `400 INVALID_UNLOCK_TOKEN`.
+      security: []
+      operationId: unlockAccount
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: One-time unlock token
+      responses:
+        '302':
+          description: Redirect to the admin web login page on success
+        '400':
+          description: Token invalid, expired, or already used
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: INVALID_UNLOCK_TOKEN
+
+  /api/auth/confirm-login/{token}:
+    get:
+      tags: [Auth]
+      summary: Confirm a suspicious login
+      description: |
+        Consumes a one-time confirmation token sent by email when a login is flagged as
+        suspicious (Req 5.3). On success the login challenge is cleared so the user can
+        complete authentication. Token-via-link endpoint: no JWT required (bypasses the JWT
+        filter). Invalid or expired tokens yield `400 CHALLENGE_EXPIRED`.
+      security: []
+      operationId: confirmSuspiciousLogin
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: One-time login confirmation token
+      responses:
+        '302':
+          description: Redirect to the admin web dashboard with issued session tokens on success
+        '400':
+          description: Token invalid or expired
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: CHALLENGE_EXPIRED
+
   /api/auth/providers:
     get:
       tags: [Auth]
@@ -2751,6 +2816,64 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /api/admin/security/alerts/summary:
+    get:
+      tags: [Security, Admin]
+      summary: Security alert summary counts
+      description: |
+        Returns aggregate counts of active (OPEN/ACKNOWLEDGED/INVESTIGATING) alerts grouped by
+        severity and by alert type, plus the overall active total. PLATFORM_ADMIN and
+        SUPPORT_AGENT (read-only).
+      operationId: getSecurityAlertSummary
+      responses:
+        '200':
+          description: Aggregate active-alert counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bySeverity:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                      format: int64
+                  byAlertType:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                      format: int64
+                  totalActive:
+                    type: integer
+                    format: int64
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/security/alerts/{alertId}:
+    get:
+      tags: [Security, Admin]
+      summary: Get a security alert by id
+      description: Returns a single security alert. PLATFORM_ADMIN and SUPPORT_AGENT (read-only).
+      operationId: getSecurityAlert
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The security alert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityAlert'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/admin/security/alerts/{alertId}/acknowledge:
     post:
       tags: [Security, Admin]
@@ -2764,6 +2887,15 @@ paths:
           schema:
             type: string
             format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
       responses:
         '200':
           description: Alert acknowledged
@@ -2795,13 +2927,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [status]
+              required: [status, notes]
               properties:
                 status:
                   type: string
                   enum: [RESOLVED, FALSE_POSITIVE]
-                resolutionNotes:
+                notes:
                   type: string
+                  maxLength: 2000
       responses:
         '200':
           description: Alert resolved
@@ -2843,7 +2976,10 @@ paths:
     post:
       tags: [Security, Admin]
       summary: Block an IP address
-      description: Adds an IP address to the blocklist. PLATFORM_ADMIN only.
+      description: |
+        Adds an IPv4 address or CIDR range (`/8`–`/32`) to the blocklist. PLATFORM_ADMIN only.
+        IPv6 is rejected, as are loopback (`127.0.0.0/8`) and RFC 1918 private ranges
+        (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) — all yielding `400`.
       operationId: blockIpAddress
       requestBody:
         required: true
@@ -2851,50 +2987,41 @@ paths:
           application/json:
             schema:
               type: object
-              required: [ipAddress, reason]
+              required: [ipOrCidr]
               properties:
-                ipAddress:
+                ipOrCidr:
                   type: string
-                  description: IPv4 or IPv6 address
-                cidrRange:
-                  type: string
-                  description: Optional CIDR notation for range blocks
+                  description: Exact IPv4 address or CIDR range (e.g. 203.0.113.7 or 10.0.0.0/24)
                 reason:
                   type: string
-                relatedAlertId:
-                  type: string
-                  format: uuid
-                expiresAt:
-                  type: string
-                  format: date-time
-                  description: Null for permanent blocks
+                  maxLength: 500
+                ttlHours:
+                  type: integer
+                  description: Time-to-live in hours; null or <= 0 means a permanent block
       responses:
         '201':
           description: IP blocked
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IpBlocklistEntry'
         '400':
           $ref: '#/components/responses/BadRequest'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '409':
-          description: IP address already blocked
 
-  /api/admin/security/ip-blocklist/{entryId}:
+  /api/admin/security/ip-blocklist/{ipOrCidr}:
     delete:
       tags: [Security, Admin]
-      summary: Unblock an IP address
-      description: Removes an IP address from the blocklist. PLATFORM_ADMIN only.
+      summary: Unblock an IP address or CIDR range
+      description: |
+        Removes an entry from the blocklist by its exact IPv4/CIDR key. PLATFORM_ADMIN only.
+        For CIDR ranges the prefix length is supplied as a second path segment so the embedded
+        `/` need not be URL-encoded (e.g. `DELETE /api/admin/security/ip-blocklist/10.0.0.0/24`).
       operationId: unblockIpAddress
       parameters:
-        - name: entryId
+        - name: ipOrCidr
           in: path
           required: true
           schema:
             type: string
-            format: uuid
+          description: The exact IPv4 address, or the network portion of a CIDR range
       responses:
         '204':
           description: IP unblocked
@@ -2902,6 +3029,113 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/admin/security/auto-response-config:
+    get:
+      tags: [Security, Admin]
+      summary: List auto-response configuration
+      description: Returns every alertType→responseMode mapping. PLATFORM_ADMIN only.
+      operationId: listAutoResponseConfig
+      responses:
+        '200':
+          description: All auto-response rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    alertType:
+                      type: string
+                    responseMode:
+                      type: string
+                      enum: [AUTOMATIC, MANUAL_REVIEW, DISABLED]
+                    updatedBy:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    updatedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/security/auto-response-config/{alertType}:
+    put:
+      tags: [Security, Admin]
+      summary: Update auto-response mode for an alert type
+      description: |
+        Sets the response mode for a single alert type. PLATFORM_ADMIN only. Records an
+        `AUTO_RESPONSE_CONFIG_CHANGED` audit-trail entry.
+      operationId: updateAutoResponseConfig
+      parameters:
+        - name: alertType
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [responseMode]
+              properties:
+                responseMode:
+                  type: string
+                  enum: [AUTOMATIC, MANUAL_REVIEW, DISABLED]
+      responses:
+        '200':
+          description: Updated rule
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alertType:
+                    type: string
+                  responseMode:
+                    type: string
+                  updatedBy:
+                    type: string
+                    format: uuid
+                  updatedAt:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/security/rotate-jwt-keys:
+    post:
+      tags: [Security, Admin]
+      summary: Emergency JWT signing-key rotation
+      description: |
+        Generates a new RSA-2048 JWT signing key, retires the previous current key (kept for
+        validation during a 15-minute grace window), and records a `JWT_KEY_ROTATED` audit-trail
+        entry. PLATFORM_ADMIN only; CSRF-protected. The routine rotation runs automatically every
+        90 days — this endpoint is for out-of-band emergency rotation (Req 18.1).
+      operationId: rotateJwtKeys
+      x-csrf-required: true
+      responses:
+        '200':
+          description: Rotation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  newKeyId:
+                    type: string
+                  rotatedAt:
+                    type: string
+                    format: date-time
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/admin/security/config:
     get:

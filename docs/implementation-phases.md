@@ -185,7 +185,9 @@ Dependencies flow downward — later phases build on earlier ones.
 
 ---
 
-## Phase 7 — Security Hardening
+## Phase 7 — Security Hardening ✅ COMPLETE
+
+**Status:** ✅ Complete. Spec: [`.kiro/specs/phase-7-security-hardening`](../.kiro/specs/phase-7-security-hardening)
 
 **Target repos:** `court-booking-platform-service`, `court-booking-transaction-service`, `court-booking-admin-web`, `court-booking-infrastructure`
 
@@ -210,6 +212,14 @@ Dependencies flow downward — later phases build on earlier ones.
 - Stripe Connect security (account status monitoring, payout fraud detection, self-booking detection)
 
 **Deliverable:** Platform hardened against OWASP Top 10, abuse patterns detected and auto-mitigated, data lifecycle managed.
+
+### Verification Notes
+
+- **Property-based test coverage:** the 30 correctness properties from the Phase 7 design (`design.md`) are covered by jqwik property suites across the platform and transaction services (Properties 1–28), with Property 29 (encryption-at-rest) and Property 30 (TLS cipher-suite restriction) verified via infrastructure assertions (Terraform `check` blocks on the managed Postgres/Redis/Spaces modules and the NGINX TLS config). Optional aggregate/log-sanitization property tasks are marked optional in the spec.
+- **End-to-end integration test:** `Phase7SecurityIntegrationTest` (platform service) exercises brute-force lockout → unlock-token redirect → counters cleared; suspicious-login challenge → confirm-login token → access token issued; and CRITICAL alert published → push dispatched → status transitioned via admin API → audit-trail row created.
+- **Endpoint smoke-test coverage:** `Phase7SecurityEndpointSmokeTest` (every Phase 7 platform security/auth endpoint, unauth/wrong-role/authorized), `TransactionServiceJwtSmokeTest` (full Phase 4–7 transaction route/role matrix), `WebSocketUpgradeSmokeTest` (STOMP interceptor close codes 4002/4003/4004 + token-refresh ERROR), and `HealthCheckSmokeTest` (actuator probes remain public) in both services.
+- **Admin Web:** security feature module (alerts, IP blocklist, auto-response config) with role-gated routes, CSRF-failure → login redirect, build-time CSP + `X-XSS-Protection: 0`, and the `react/no-danger` lint rule; covered by Vitest/RTL tests.
+- **Operational runbooks** (from Task 33.4) live under [`docs/runbooks/`](./runbooks/): `ip-blocklist-management.md`, `secret-rotation.md`, `stripe-webhook-ip-refresh.md`, `geoip-refresh.md`.
 
 ---
 

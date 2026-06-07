@@ -667,8 +667,13 @@
           "requirements": ["Req 32.5 — security alert system", "Req 32.6 — automated responses"],
           "payload": {
             "type": "object",
-            "required": ["alertType", "severity", "description"],
+            "required": ["eventId", "alertType", "severity", "description", "timestamp"],
             "properties": {
+              "eventId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Deduplication key for consumer idempotency (Task 1.5). The Platform Service consumer persists at most one security_alerts row per eventId."
+              },
               "alertType": {
                 "type": "string",
                 "enum": ["BOOKING_ABUSE", "PAYMENT_FRAUD", "SCRAPING", "BRUTE_FORCE", "SUSPICIOUS_LOGIN", "RATE_LIMIT_EXCEEDED", "WEBHOOK_REPLAY", "ACCOUNT_TAKEOVER"],
@@ -681,20 +686,98 @@
               },
               "userId": { "type": ["string", "null"], "format": "uuid", "description": "Affected user ID, if identifiable." },
               "ipAddress": { "type": ["string", "null"], "description": "Source IP address of the suspicious activity." },
-              "description": { "type": "string", "description": "Human-readable description of the detected activity." },
+              "description": { "type": "string", "maxLength": 1000, "description": "Human-readable description of the detected activity (≤1000 chars)." },
+              "timestamp": { "type": "string", "format": "date-time", "description": "When the alert was generated (ISO-8601)." },
               "metadata": {
                 "type": "object",
-                "description": "Alert-specific structured data.",
-                "properties": {
-                  "endpoint": { "type": ["string", "null"], "description": "API endpoint involved." },
-                  "requestCount": { "type": ["integer", "null"], "description": "Number of requests in detection window." },
-                  "windowSeconds": { "type": ["integer", "null"], "description": "Detection window duration." },
-                  "threshold": { "type": ["integer", "null"], "description": "Threshold that was exceeded." },
-                  "userAgent": { "type": ["string", "null"] },
-                  "geoLocation": { "type": ["string", "null"], "description": "Approximate geo-location of IP." },
-                  "stripeEventId": { "type": ["string", "null"], "description": "Related Stripe event ID for payment fraud alerts." }
-                }
+                "description": "Alert-specific structured data (flexible map, ≤10 KB when serialized). Common keys include endpoint, requestCount, windowSeconds, threshold, userAgent, geoLocation, stripeEventId."
               }
+            }
+          }
+        }
+      }
+    },
+
+    "platform-commands": {
+      "description": "Service-to-service command topic. The Platform Service publishes commands consumed by the Transaction Service to undo cross-service effects when a PLATFORM_ADMIN resolves a security alert, and to propagate Stripe/secret state changes. Partition key is userId (falling back to relatedAlertId) to preserve per-owner ordering.",
+      "producer": "platform-service",
+      "consumers": ["transaction-service"],
+      "requirements": ["Req 18.3", "Req 19.1", "Task 9.2", "Task 10.2", "Task 29.3", "Task 29.4"],
+      "events": {
+        "STRIPE_STATUS_RESET": {
+          "description": "Flips a court owner's Stripe Connect status back to ACTIVE after a PLATFORM_ADMIN resolves the PAYMENT_FRAUD alert that put them UNDER_REVIEW (Task 9.2).",
+          "payload": {
+            "type": "object",
+            "required": ["commandType", "userId", "relatedAlertId"],
+            "properties": {
+              "commandType": { "type": "string", "const": "STRIPE_STATUS_RESET" },
+              "userId": { "type": "string", "format": "uuid" },
+              "relatedAlertId": { "type": "string", "format": "uuid" },
+              "payload": {
+                "type": "object",
+                "properties": { "newStatus": { "type": "string", "const": "ACTIVE" } }
+              },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "RELEASE_PAYOUT_HOLD": {
+          "description": "Releases (or cancels, for FALSE_POSITIVE) a payout held by a PAYMENT_FRAUD alert once the alert is resolved (Task 10.2).",
+          "payload": {
+            "type": "object",
+            "required": ["commandType", "relatedAlertId"],
+            "properties": {
+              "commandType": { "type": "string", "const": "RELEASE_PAYOUT_HOLD" },
+              "userId": { "type": ["string", "null"], "format": "uuid" },
+              "relatedAlertId": { "type": "string", "format": "uuid" },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "newPayoutStatus": { "type": "string", "enum": ["NORMAL", "CANCELLED"] },
+                  "falsePositive": { "type": "boolean" }
+                }
+              },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "SET_STRIPE_STATUS": {
+          "description": "Sets a court owner's Stripe Connect status (e.g. to UNDER_REVIEW) as a cross-service command when the Transaction Service's ChargebackRateEvaluationJob detects a CRITICAL chargeback rate (Task 9.2). Producer may be the transaction-service in that direction.",
+          "payload": {
+            "type": "object",
+            "required": ["commandType", "userId", "status"],
+            "properties": {
+              "commandType": { "type": "string", "const": "SET_STRIPE_STATUS" },
+              "userId": { "type": "string", "format": "uuid" },
+              "status": { "type": "string", "enum": ["NOT_STARTED", "PENDING", "ACTIVE", "RESTRICTED", "DISABLED", "UNDER_REVIEW"] },
+              "relatedAlertId": { "type": ["string", "null"], "format": "uuid" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "INTERNAL_API_CREDENTIAL_ROTATED": {
+          "description": "Broadcasts a rotated internal service-to-service API credential to consuming services. The old credential remains valid for a 5-minute overlap window before removal (Task 29.3).",
+          "payload": {
+            "type": "object",
+            "required": ["commandType", "newCredentialId", "overlapWindowSeconds"],
+            "properties": {
+              "commandType": { "type": "string", "const": "INTERNAL_API_CREDENTIAL_ROTATED" },
+              "newCredentialId": { "type": "string" },
+              "overlapWindowSeconds": { "type": "integer" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "STRIPE_WEBHOOK_SECRET_ROTATED": {
+          "description": "Broadcasts a rotated Stripe webhook signing secret. The Transaction Service validates incoming webhooks against both old and new secrets during a 60-minute overlap window, then drops the old (Task 29.4).",
+          "payload": {
+            "type": "object",
+            "required": ["commandType", "newSecret", "overlapWindowSeconds"],
+            "properties": {
+              "commandType": { "type": "string", "const": "STRIPE_WEBHOOK_SECRET_ROTATED" },
+              "newSecret": { "type": "string" },
+              "overlapWindowSeconds": { "type": "integer" },
+              "timestamp": { "type": "string", "format": "date-time" }
             }
           }
         }

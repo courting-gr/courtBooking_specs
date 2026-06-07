@@ -59,7 +59,9 @@ paths:
         Creates a new booking with atomic conflict prevention. Acquires optimistic lock on time slot,
         processes payment, and confirms or sets to PENDING based on court confirmation mode.
         CUSTOMER role only.
+        Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: createBooking
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -100,13 +102,21 @@ paths:
                 $ref: '#/components/schemas/BookingConstraintError'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     get:
       tags: [Bookings]
       summary: List bookings for current user
       description: |
         CUSTOMER: returns own bookings. COURT_OWNER: returns bookings for owned courts
         (both customer and manual bookings in unified view).
+        Authorization — requires one of the CUSTOMER, COURT_OWNER, PLATFORM_ADMIN roles (Bearer JWT).
       operationId: listBookings
+      x-required-roles: [CUSTOMER, COURT_OWNER, PLATFORM_ADMIN]
       parameters:
         - name: status
           in: query
@@ -149,13 +159,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BookingListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/{bookingId}:
     get:
       tags: [Bookings]
       summary: Get booking details
-      description: Returns full booking details including court info, payment status, and audit trail.
+      description: Returns full booking details including court info, payment status, and audit trail. Authorization — requires one of the CUSTOMER, COURT_OWNER, PLATFORM_ADMIN roles (Bearer JWT).
       operationId: getBookingDetails
+      x-required-roles: [CUSTOMER, COURT_OWNER, PLATFORM_ADMIN]
       parameters:
         - $ref: '#/components/parameters/BookingId'
       responses:
@@ -167,6 +186,14 @@ paths:
                 $ref: '#/components/schemas/BookingDetail'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/{bookingId}/modify:
     put:
@@ -175,7 +202,9 @@ paths:
       description: |
         Changes booking time slot. Validates new slot availability, adjusts payment if pricing differs.
         Processed atomically.
+        Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: modifyBooking
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/BookingId'
       requestBody:
@@ -206,6 +235,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/{bookingId}/cancel:
     post:
@@ -214,7 +251,9 @@ paths:
       description: |
         Cancels a booking. Refund amount determined by cancellation policy.
         Court owner cancellation always triggers full refund.
+        Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: cancelBooking
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/BookingId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -233,13 +272,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CancellationResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/{bookingId}/confirm:
     post:
       tags: [Bookings]
       summary: Confirm a pending booking
-      description: Court owner confirms a PENDING_CONFIRMATION booking. Captures payment. COURT_OWNER only.
+      description: Court owner confirms a PENDING_CONFIRMATION booking. Captures payment. COURT_OWNER only. Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: confirmBooking
+      x-required-roles: [COURT_OWNER]
       parameters:
         - $ref: '#/components/parameters/BookingId'
       responses:
@@ -251,13 +299,22 @@ paths:
                 $ref: '#/components/schemas/Booking'
         '400':
           description: Booking not in PENDING_CONFIRMATION status
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/{bookingId}/reject:
     post:
       tags: [Bookings]
       summary: Reject a pending booking
-      description: Court owner rejects a PENDING_CONFIRMATION booking. Full refund issued. COURT_OWNER only.
+      description: Court owner rejects a PENDING_CONFIRMATION booking. Full refund issued. COURT_OWNER only. Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: rejectBooking
+      x-required-roles: [COURT_OWNER]
       parameters:
         - $ref: '#/components/parameters/BookingId'
       requestBody:
@@ -275,13 +332,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CancellationResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/pending:
     get:
       tags: [Bookings]
       summary: List pending bookings for court owner
-      description: Returns bookings awaiting confirmation for the court owner's courts. COURT_OWNER only.
+      description: Returns bookings awaiting confirmation for the court owner's courts. COURT_OWNER only. Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: listPendingBookings
+      x-required-roles: [COURT_OWNER]
       parameters:
         - name: courtId
           in: query
@@ -305,6 +371,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BookingListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   # ─── Manual Bookings ────────────────────────────────────────────────────────
   /api/bookings/manual:
@@ -316,7 +390,9 @@ paths:
         Same conflict prevention as customer bookings. Requires active subscription.
         Supports optional recurring configuration for weekly bookings (1-12 weeks).
         COURT_OWNER only.
+        Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: createManualBooking
+      x-required-roles: [COURT_OWNER]
       requestBody:
         required: true
         content:
@@ -342,6 +418,12 @@ paths:
           description: Subscription expired or inactive
         '409':
           description: Time slot conflict (all dates unavailable for recurring)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   # ─── Recurring Bookings ─────────────────────────────────────────────────────
   /api/bookings/recurring:
@@ -351,7 +433,9 @@ paths:
       description: |
         Creates weekly recurring bookings for up to 12 weeks. Validates availability for all dates.
         Each instance is charged separately. Partial creation allowed if some dates conflict.
+        Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: createRecurringBooking
+      x-required-roles: [CUSTOMER]
       requestBody:
         required: true
         content:
@@ -367,13 +451,22 @@ paths:
                 $ref: '#/components/schemas/RecurringBookingResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/recurring/{recurringGroupId}:
     get:
       tags: [Recurring Bookings]
       summary: Get recurring booking group
-      description: Returns all instances in a recurring booking group.
+      description: Returns all instances in a recurring booking group. Authorization — requires one of the CUSTOMER, COURT_OWNER roles (Bearer JWT).
       operationId: getRecurringBookingGroup
+      x-required-roles: [CUSTOMER, COURT_OWNER]
       parameters:
         - name: recurringGroupId
           in: path
@@ -388,13 +481,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RecurringBookingGroup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/{bookingId}/receipt:
     get:
       tags: [Bookings]
       summary: Get booking receipt
-      description: Returns digital receipt with booking details, payment amount, and transaction ID.
+      description: Returns digital receipt with booking details, payment amount, and transaction ID. Authorization — requires one of the CUSTOMER, COURT_OWNER roles (Bearer JWT).
       operationId: getBookingReceipt
+      x-required-roles: [CUSTOMER, COURT_OWNER]
       parameters:
         - $ref: '#/components/parameters/BookingId'
       responses:
@@ -408,6 +510,14 @@ paths:
               schema:
                 type: string
                 format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/{bookingId}/no-show:
     post:
@@ -416,7 +526,9 @@ paths:
       description: |
         Court owner flags a completed booking as no-show. Must be within 24 hours after
         the booking's scheduled end time. No automatic financial penalty. COURT_OWNER only.
+        Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: flagNoShow
+      x-required-roles: [COURT_OWNER]
       parameters:
         - $ref: '#/components/parameters/BookingId'
       requestBody:
@@ -450,6 +562,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/{bookingId}/mark-paid:
     post:
@@ -458,7 +578,9 @@ paths:
       description: |
         Court owner marks a manual booking as paid via offline payment (cash, bank transfer).
         Clears UNPAID_BOOKING reminder triggers. Only applicable to manual bookings. COURT_OWNER only.
+        Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: markBookingPaid
+      x-required-roles: [COURT_OWNER]
       parameters:
         - $ref: '#/components/parameters/BookingId'
       requestBody:
@@ -499,6 +621,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/bulk-action:
     post:
@@ -507,7 +637,9 @@ paths:
       description: |
         Court owner confirms or rejects multiple pending bookings in a single action.
         Each booking is processed independently. Returns per-booking results. COURT_OWNER only.
+        Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: bulkBookingAction
+      x-required-roles: [COURT_OWNER]
       requestBody:
         required: true
         content:
@@ -539,6 +671,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BulkActionResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/bookings/calendar/ical:
     get:
@@ -547,7 +687,9 @@ paths:
       description: |
         Generates an iCal feed of bookings for the authenticated court owner's courts.
         For integration with Google Calendar, Outlook, etc. COURT_OWNER only.
+        Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: exportBookingCalendar
+      x-required-roles: [COURT_OWNER]
       parameters:
         - name: courtId
           in: query
@@ -572,6 +714,14 @@ paths:
             text/calendar:
               schema:
                 type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
 
   # ─── Payments ───────────────────────────────────────────────────────────────
@@ -579,8 +729,9 @@ paths:
     get:
       tags: [Payments]
       summary: List saved payment methods
-      description: Returns customer's saved payment methods from Stripe.
+      description: Returns customer's saved payment methods from Stripe. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: listPaymentMethods
+      x-required-roles: [CUSTOMER]
       responses:
         '200':
           description: Payment methods
@@ -593,11 +744,20 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/PaymentMethod'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     post:
       tags: [Payments]
       summary: Add payment method
-      description: Attaches a new payment method (card, Apple Pay, Google Pay) via Stripe setup intent.
+      description: Attaches a new payment method (card, Apple Pay, Google Pay) via Stripe setup intent. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: addPaymentMethod
+      x-required-roles: [CUSTOMER]
       requestBody:
         required: true
         content:
@@ -616,13 +776,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaymentMethod'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/payments/setup-intent:
     post:
       tags: [Payments]
       summary: Create Stripe setup intent
-      description: Creates a Stripe SetupIntent for adding a new payment method on the client side.
+      description: Creates a Stripe SetupIntent for adding a new payment method on the client side. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: createSetupIntent
+      x-required-roles: [CUSTOMER]
       responses:
         '200':
           description: Setup intent created
@@ -634,13 +803,22 @@ paths:
                   clientSecret:
                     type: string
                     description: Stripe client secret for frontend SDK
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/payments/{paymentId}/refund:
     get:
       tags: [Payments]
       summary: Get refund status
-      description: Returns the status of a refund for a specific payment.
+      description: Returns the status of a refund for a specific payment. Authorization — requires one of the CUSTOMER, COURT_OWNER roles (Bearer JWT).
       operationId: getRefundStatus
+      x-required-roles: [CUSTOMER, COURT_OWNER]
       parameters:
         - name: paymentId
           in: path
@@ -655,13 +833,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RefundStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/payments/{paymentId}/dispute:
     get:
       tags: [Payments]
       summary: Get dispute details
-      description: Returns dispute/chargeback details for a payment.
+      description: Returns dispute/chargeback details for a payment. Authorization — requires one of the CUSTOMER, COURT_OWNER roles (Bearer JWT).
       operationId: getDisputeDetails
+      x-required-roles: [CUSTOMER, COURT_OWNER]
       parameters:
         - name: paymentId
           in: path
@@ -676,14 +863,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DisputeDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   # ─── Notifications ──────────────────────────────────────────────────────────
   /api/notifications/device:
     post:
       tags: [Notifications]
       summary: Register device for push notifications
-      description: Registers an FCM device token for the authenticated user. Supports multiple devices.
+      description: Registers an FCM device token for the authenticated user. Supports multiple devices. Authorization — requires one of the CUSTOMER, COURT_OWNER, PLATFORM_ADMIN roles (Bearer JWT).
       operationId: registerDevice
+      x-required-roles: [CUSTOMER, COURT_OWNER, PLATFORM_ADMIN]
       requestBody:
         required: true
         content:
@@ -704,11 +900,20 @@ paths:
       responses:
         '201':
           description: Device registered
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     delete:
       tags: [Notifications]
       summary: Unregister device
-      description: Removes device token on logout or uninstall.
+      description: Removes device token on logout or uninstall. Authorization — requires one of the CUSTOMER, COURT_OWNER, PLATFORM_ADMIN roles (Bearer JWT).
       operationId: unregisterDevice
+      x-required-roles: [CUSTOMER, COURT_OWNER, PLATFORM_ADMIN]
       requestBody:
         required: true
         content:
@@ -722,13 +927,22 @@ paths:
       responses:
         '204':
           description: Device unregistered
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/notifications:
     get:
       tags: [Notifications]
       summary: List notifications
-      description: Returns paginated notification history for the authenticated user.
+      description: Returns paginated notification history for the authenticated user. Authorization — requires one of the CUSTOMER, COURT_OWNER, PLATFORM_ADMIN roles (Bearer JWT).
       operationId: listNotifications
+      x-required-roles: [CUSTOMER, COURT_OWNER, PLATFORM_ADMIN]
       parameters:
         - name: unreadOnly
           in: query
@@ -752,12 +966,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/notifications/{notificationId}/read:
     post:
       tags: [Notifications]
       summary: Mark notification as read
+      description: Authorization — requires one of the CUSTOMER, COURT_OWNER, PLATFORM_ADMIN roles (Bearer JWT).
       operationId: markNotificationRead
+      x-required-roles: [CUSTOMER, COURT_OWNER, PLATFORM_ADMIN]
       parameters:
         - name: notificationId
           in: path
@@ -768,15 +992,33 @@ paths:
       responses:
         '204':
           description: Marked as read
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/notifications/read-all:
     post:
       tags: [Notifications]
       summary: Mark all notifications as read
+      description: Authorization — requires one of the CUSTOMER, COURT_OWNER, PLATFORM_ADMIN roles (Bearer JWT).
       operationId: markAllNotificationsRead
+      x-required-roles: [CUSTOMER, COURT_OWNER, PLATFORM_ADMIN]
       responses:
         '204':
           description: All marked as read
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
 
   # ─── Waitlist ───────────────────────────────────────────────────────────────
@@ -787,7 +1029,9 @@ paths:
       description: |
         Adds customer to waitlist for a fully booked time slot. FIFO order, no priority overrides.
         Max 5 concurrent waitlist entries per customer. CUSTOMER role only.
+        Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: joinWaitlist
+      x-required-roles: [CUSTOMER]
       requestBody:
         required: true
         content:
@@ -846,11 +1090,18 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     get:
       tags: [Waitlist]
       summary: List active waitlist entries
-      description: Returns the customer's active waitlist entries.
+      description: Returns the customer's active waitlist entries. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: listWaitlistEntries
+      x-required-roles: [CUSTOMER]
       responses:
         '200':
           description: Waitlist entries
@@ -863,13 +1114,22 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/WaitlistEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/waitlist/{waitlistEntryId}:
     delete:
       tags: [Waitlist]
       summary: Leave waitlist
-      description: Removes customer from a waitlist.
+      description: Removes customer from a waitlist. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: leaveWaitlist
+      x-required-roles: [CUSTOMER]
       parameters:
         - name: waitlistEntryId
           in: path
@@ -880,6 +1140,14 @@ paths:
       responses:
         '204':
           description: Removed from waitlist
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/waitlist/{waitlistEntryId}/confirm:
     post:
@@ -888,7 +1156,9 @@ paths:
       description: |
         When notified of availability, customer confirms within the hold period (default 15 min).
         Triggers normal booking and payment flow.
+        Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: confirmWaitlistSlot
+      x-required-roles: [CUSTOMER]
       parameters:
         - name: waitlistEntryId
           in: path
@@ -916,14 +1186,23 @@ paths:
                 $ref: '#/components/schemas/Booking'
         '410':
           description: Hold period expired — slot moved to next in queue
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   # ─── Open Matches ──────────────────────────────────────────────────────────
   /api/matches:
     get:
       tags: [Open Matches]
       summary: Search open matches
-      description: Returns open matches filtered by sport type, skill level, location, and date.
+      description: Returns open matches filtered by sport type, skill level, location, and date. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: searchOpenMatches
+      x-required-roles: [CUSTOMER]
       parameters:
         - name: courtType
           in: query
@@ -972,13 +1251,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenMatchListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/matches/{matchId}:
     get:
       tags: [Open Matches]
       summary: Get open match details
-      description: Returns full match details including players, skill levels, and court info.
+      description: Returns full match details including players, skill levels, and court info. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: getOpenMatchDetails
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/MatchId'
       responses:
@@ -988,6 +1276,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenMatchDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/matches/{matchId}/join:
     post:
@@ -996,7 +1292,9 @@ paths:
       description: |
         Sends join request. If auto-accept is enabled and player is within skill range,
         automatically approved. Otherwise, match creator has 4 hours to respond.
+        Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: joinOpenMatch
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/MatchId'
       requestBody:
@@ -1056,13 +1354,22 @@ paths:
                             type: integer
                           max:
                             type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/matches/{matchId}/join-requests:
     get:
       tags: [Open Matches]
       summary: List join requests for a match
-      description: Returns pending join requests. Match creator only.
+      description: Returns pending join requests. Match creator only. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: listJoinRequests
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/MatchId'
       responses:
@@ -1077,13 +1384,22 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/JoinRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/matches/{matchId}/join-requests/{requestId}/approve:
     post:
       tags: [Open Matches]
       summary: Approve join request
-      description: Match creator approves a player's join request. Triggers payment for their share.
+      description: Match creator approves a player's join request. Triggers payment for their share. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: approveJoinRequest
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/MatchId'
         - name: requestId
@@ -1095,12 +1411,22 @@ paths:
       responses:
         '200':
           description: Player added to match
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/matches/{matchId}/join-requests/{requestId}/decline:
     post:
       tags: [Open Matches]
       summary: Decline join request
+      description: Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: declineJoinRequest
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/MatchId'
         - name: requestId
@@ -1112,25 +1438,43 @@ paths:
       responses:
         '200':
           description: Request declined
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/matches/{matchId}/leave:
     post:
       tags: [Open Matches]
       summary: Leave an open match
-      description: Player leaves before booking time. Match reopens for new players. Payment adjusted.
+      description: Player leaves before booking time. Match reopens for new players. Payment adjusted. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: leaveOpenMatch
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/MatchId'
       responses:
         '200':
           description: Left match, payment adjustment processed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/matches/{matchId}/messages:
     get:
       tags: [Open Matches]
       summary: Get match chat messages
-      description: In-app messaging between players in the same match.
+      description: In-app messaging between players in the same match. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: getMatchMessages
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/MatchId'
         - name: page
@@ -1150,10 +1494,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MatchMessageListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     post:
       tags: [Open Matches]
       summary: Send message in match chat
+      description: Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: sendMatchMessage
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/MatchId'
       requestBody:
@@ -1170,6 +1524,14 @@ paths:
       responses:
         '201':
           description: Message sent
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
 
   # ─── Split Payments ─────────────────────────────────────────────────────────
@@ -1180,7 +1542,9 @@ paths:
       description: |
         Booking creator initiates split payment. Full amount held from creator.
         Invited players receive payment links. Min share: €1.00.
+        Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: initiateSplitPayment
+      x-required-roles: [CUSTOMER]
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1196,13 +1560,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SplitPayment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/split-payments/{splitPaymentId}:
     get:
       tags: [Split Payments]
       summary: Get split payment details
-      description: Returns split payment status, shares, and payment status per player.
+      description: Returns split payment status, shares, and payment status per player. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: getSplitPaymentDetails
+      x-required-roles: [CUSTOMER]
       parameters:
         - name: splitPaymentId
           in: path
@@ -1217,13 +1590,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SplitPaymentDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/split-payments/{splitPaymentId}/pay:
     post:
       tags: [Split Payments]
       summary: Pay split payment share
-      description: Co-player pays their share. Releases corresponding amount from creator's hold.
+      description: Co-player pays their share. Releases corresponding amount from creator's hold. Authorization — requires the CUSTOMER role (Bearer JWT).
       operationId: paySplitShare
+      x-required-roles: [CUSTOMER]
       parameters:
         - name: splitPaymentId
           in: path
@@ -1248,6 +1630,14 @@ paths:
           description: Payment failed
         '410':
           description: Payment deadline expired
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   # ─── Stripe Connect ──────────────────────────────────────────────────────────
   /api/payments/stripe-connect/onboard:
@@ -1257,7 +1647,9 @@ paths:
       description: |
         Creates a Stripe Connect Express account (if one does not already exist) and returns
         a Stripe-hosted onboarding URL. COURT_OWNER only.
+        Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: initiateStripeConnectOnboarding
+      x-required-roles: [COURT_OWNER]
       requestBody:
         required: true
         content:
@@ -1283,13 +1675,20 @@ paths:
                 $ref: '#/components/schemas/StripeConnectOnboardingResult'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/payments/stripe-connect/status:
     get:
       tags: [Stripe Connect]
       summary: Get Stripe Connect status
-      description: Returns the current Stripe Connect onboarding status for the court owner. COURT_OWNER only.
+      description: Returns the current Stripe Connect onboarding status for the court owner. COURT_OWNER only. Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: getStripeConnectStatus
+      x-required-roles: [COURT_OWNER]
       responses:
         '200':
           description: Stripe Connect status
@@ -1297,6 +1696,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StripeConnectStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/payments/stripe-connect/payouts:
     get:
@@ -1305,7 +1712,9 @@ paths:
       description: |
         Returns payout schedule, payout history, balance, and Stripe account status.
         Data fetched from Stripe Connect API on demand. COURT_OWNER only.
+        Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: getStripeConnectPayouts
+      x-required-roles: [COURT_OWNER]
       responses:
         '200':
           description: Payout information
@@ -1313,6 +1722,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StripeConnectPayouts'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/payments/stripe-connect/payout-schedule:
     put:
@@ -1321,7 +1738,9 @@ paths:
       description: |
         Updates the court owner's payout schedule (daily, weekly, monthly).
         COURT_OWNER only.
+        Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: updatePayoutSchedule
+      x-required-roles: [COURT_OWNER]
       requestBody:
         required: true
         content:
@@ -1341,6 +1760,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/payments/{paymentId}/dispute/evidence:
     post:
@@ -1349,7 +1776,9 @@ paths:
       description: |
         Court owner submits evidence for an active payment dispute/chargeback.
         COURT_OWNER only.
+        Authorization — requires the COURT_OWNER role (Bearer JWT).
       operationId: submitDisputeEvidence
+      x-required-roles: [COURT_OWNER]
       parameters:
         - name: paymentId
           in: path
@@ -1396,6 +1825,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   # ─── Webhooks (Server-to-Server) ────────────────────────────────────────────
   /api/webhooks/stripe:
@@ -1547,6 +1984,17 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     RateLimited:
       description: Too many requests — rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Number of seconds to wait before retrying
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: JWKS endpoint unavailable — cannot verify token signature
       headers:
         Retry-After:
           schema:

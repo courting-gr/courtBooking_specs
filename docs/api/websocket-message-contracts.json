@@ -64,6 +64,11 @@
         "description": "System messages: token expiry warnings, server shutdown notices, error messages.",
         "authorization": "Authenticated user",
         "requirements": ["Req 35.4", "Req 35.7"]
+      },
+      "/user/queue/security-alerts": {
+        "description": "Real-time security alert pushes for the admin dashboard. The Platform Service publishes HIGH and CRITICAL severity alerts to the Redis channel 'security-alert-push'; the Transaction Service's SecurityAlertPubSubBridge fans them out to connected PLATFORM_ADMIN and SUPPORT_AGENT sessions. The admin dashboard appends pushed alerts without a page refresh.",
+        "authorization": "PLATFORM_ADMIN and SUPPORT_AGENT only",
+        "requirements": ["Req 2.4", "Req 24.4"]
       }
     },
 
@@ -345,6 +350,35 @@
           "closeCode": { "type": ["integer", "null"], "description": "WebSocket close code if willDisconnect is true." }
         }
       }
+    },
+
+    "SECURITY_ALERT_PUSH": {
+      "description": "Real-time push of a HIGH or CRITICAL security alert to the admin security dashboard. Published by the Platform Service to the Redis channel 'security-alert-push' upon consuming a HIGH/CRITICAL SECURITY_ALERT event, then fanned out by the Transaction Service's SecurityAlertPubSubBridge to connected PLATFORM_ADMIN and SUPPORT_AGENT sessions. Clients append the alert to the dashboard list without a page refresh.",
+      "destination": "/user/queue/security-alerts",
+      "trigger": "Platform Service consumes a HIGH/CRITICAL event from the security-events Kafka topic and persists it → Redis Pub/Sub (security-alert-push) → WebSocket broadcast",
+      "requirements": ["Req 2.4 — real-time alert push", "Req 24.4 — dashboard live updates"],
+      "payload": {
+        "type": "object",
+        "required": ["messageType", "alertId", "alertType", "severity", "createdAt"],
+        "properties": {
+          "messageType": { "type": "string", "const": "SECURITY_ALERT_PUSH" },
+          "alertId": { "type": "string", "format": "uuid", "description": "ID of the persisted security_alerts row." },
+          "alertType": {
+            "type": "string",
+            "enum": ["BOOKING_ABUSE", "PAYMENT_FRAUD", "SCRAPING", "BRUTE_FORCE", "SUSPICIOUS_LOGIN", "RATE_LIMIT_EXCEEDED", "WEBHOOK_REPLAY", "ACCOUNT_TAKEOVER"],
+            "description": "Category of the security alert."
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["HIGH", "CRITICAL"],
+            "description": "Severity of the pushed alert. Only HIGH and CRITICAL alerts are pushed in real time."
+          },
+          "userId": { "type": ["string", "null"], "format": "uuid", "description": "Affected user ID, if identifiable." },
+          "ipAddress": { "type": ["string", "null"], "description": "Source IP address of the suspicious activity." },
+          "summary": { "type": ["string", "null"], "description": "Short human-readable summary (the alert description)." },
+          "createdAt": { "type": "string", "format": "date-time", "description": "ISO 8601 UTC when the alert was created." }
+        }
+      }
     }
   },
 
@@ -408,6 +442,12 @@
         "allowedRoles": ["CUSTOMER", "COURT_OWNER", "SUPPORT_AGENT", "PLATFORM_ADMIN"],
         "constraint": "Automatic — all authenticated connections receive system messages.",
         "requirement": "Req 35.4"
+      },
+      {
+        "destination": "/user/queue/security-alerts",
+        "allowedRoles": ["PLATFORM_ADMIN", "SUPPORT_AGENT"],
+        "constraint": "Security operations staff only. Carries HIGH/CRITICAL security alert pushes. Enforced on SUBSCRIBE by ChannelAuthorizationInterceptor.",
+        "requirement": "Req 2.4, Req 24.4"
       }
     ]
   }

@@ -6,63 +6,63 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
 
 ## Tasks
 
-- [ ] 1. Schema migrations and shared common-module additions
-  - [ ] 1.1 Create platform-schema Flyway migration `V7__phase7_security_schema.sql`
+- [x] 1. Schema migrations and shared common-module additions
+  - [x] 1.1 Create platform-schema Flyway migration `V7__phase7_security_schema.sql`
     - In `court-booking-platform-service/src/main/resources/db/migration/`, ALTER `users` to ADD `last_known_ip_address VARCHAR(45) NULL`, `last_known_device_id VARCHAR(255) NULL`, `last_seen_at TIMESTAMPTZ NULL`, `restriction_status VARCHAR(20) NOT NULL DEFAULT 'NONE' CHECK (restriction_status IN ('NONE','READ_ONLY'))`, `restriction_reason VARCHAR(255) NULL`, `restriction_alert_id UUID NULL REFERENCES security_alerts(id)`, `restricted_at TIMESTAMPTZ NULL`, `previous_stripe_iban_hash VARCHAR(64) NULL`
     - DROP and re-create the `users.stripe_connect_status` CHECK constraint to include `('NONE','PENDING','ACTIVE','RESTRICTED','DISABLED','UNDER_REVIEW')` (UNDER_REVIEW is new in Phase 7; preserve all prior values)
     - CREATE TABLE `security_auto_response_config (alert_type VARCHAR(50) PRIMARY KEY CHECK alert_type IN ('BOOKING_ABUSE','PAYMENT_FRAUD','SCRAPING','BRUTE_FORCE','SUSPICIOUS_LOGIN','RATE_LIMIT_EXCEEDED','WEBHOOK_REPLAY','ACCOUNT_TAKEOVER'), response_mode VARCHAR(20) NOT NULL CHECK response_mode IN ('AUTOMATIC','MANUAL_REVIEW','DISABLED'), updated_by UUID NULL REFERENCES users(id), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())` and seed defaults from Req 25 AC 4: BRUTE_FORCE=AUTOMATIC, ACCOUNT_TAKEOVER=AUTOMATIC, PAYMENT_FRAUD=MANUAL_REVIEW, BOOKING_ABUSE=AUTOMATIC, SCRAPING=AUTOMATIC, SUSPICIOUS_LOGIN=MANUAL_REVIEW, RATE_LIMIT_EXCEEDED=AUTOMATIC, WEBHOOK_REPLAY=MANUAL_REVIEW
     - CREATE TABLE `security_audit_trail (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), actor_user_id UUID NULL REFERENCES users(id), action VARCHAR(50) NOT NULL, target_user_id UUID NULL REFERENCES users(id), target_ip VARCHAR(45) NULL, related_alert_id UUID NULL REFERENCES security_alerts(id), metadata JSONB NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())` with indexes on `(actor_user_id, created_at DESC)`, `(target_user_id, created_at DESC)`, `(action, created_at DESC)`. Append-only — REVOKE UPDATE, DELETE on this table from `platform_service_role`
     - ALTER TABLE `ip_blocklist` to extend `reason` column from `VARCHAR(255)` to `VARCHAR(500)` to match Req 7.2 maximum reason length
     - _Requirements: 29.1, 21.4, 23.1, 23.2, 23.4, 25.3, 18.5, 19.5, 7.2_
-  - [ ] 1.2 Create platform-schema rollback script `V7__phase7_security_schema.rollback.sql`
+  - [x] 1.2 Create platform-schema rollback script `V7__phase7_security_schema.rollback.sql`
     - In `court-booking-platform-service/src/main/resources/db/migration/`, write the exact reverse of `V7__phase7_security_schema.sql`: DROP TABLE `security_audit_trail`, DROP TABLE `security_auto_response_config`, ALTER `users` to remove the seven Phase 7 columns, restore the prior `stripe_connect_status` CHECK constraint without UNDER_REVIEW
     - Document the rollback procedure in a comment header so operators can apply it manually if Phase 7 must be reverted
     - _Requirements: 29.3_
-  - [ ] 1.3 Create transaction-schema Flyway migration `V<n>__phase7_fraud_columns.sql`
+  - [x] 1.3 Create transaction-schema Flyway migration `V<n>__phase7_fraud_columns.sql`
     - In `court-booking-transaction-service/src/main/resources/db/migration/`, determine the next available `V<n>` number, then ALTER `bookings` to ADD `fraud_review_required BOOLEAN NOT NULL DEFAULT FALSE` and `fraud_metadata JSONB NULL`
     - ALTER `payments` to ADD `payout_status VARCHAR(20) NOT NULL DEFAULT 'NORMAL' CHECK (payout_status IN ('NORMAL','HELD','RELEASED','CANCELLED'))`, `payout_hold_reason VARCHAR(255) NULL`, `payout_held_alert_id UUID NULL` (no cross-schema FK; application-enforced linkage)
     - CREATE INDEX `idx_bookings_fraud_review ON bookings(fraud_review_required) WHERE fraud_review_required = TRUE` and `idx_payments_held ON payments(payout_status) WHERE payout_status = 'HELD'`
     - Write the matching rollback script `V<n>__phase7_fraud_columns.rollback.sql`
     - _Requirements: 29.2, 29.3, 4.5, 20.4, 21.3_
-  - [ ] 1.4 Add `PiiSanitizationFilter` to `court-booking-common`
+  - [x] 1.4 Add `PiiSanitizationFilter` to `court-booking-common`
     - Create `court-booking-common/src/main/java/gr/courtbooking/common/logging/PiiSanitizationFilter.java` extending `ch.qos.logback.classic.turbo.TurboFilter`. In `decide()`, redact occurrences of credit card patterns (sequences of 13-19 digits, validated by Luhn or simple length check), JWT patterns (strings starting with `eyJ` followed by base64url chars), and Stripe API keys (`sk_(live|test)_[A-Za-z0-9]+`, `rk_(live|test)_[A-Za-z0-9]+`) by replacing the matched substring with `[REDACTED]`
     - Create `gr.courtbooking.common.logging.SanitizedMessageProvider` utility with a static `sanitize(String input)` method exposing the same regex-based replacement so domain code can sanitize message arguments before logging
     - Add unit tests in `court-booking-common/src/test/java/gr/courtbooking/common/logging/PiiSanitizationFilterTest.java` covering each pattern, mixed patterns in one message, performance baseline (≤ 50µs per log event for typical message sizes)
     - _Requirements: 16.1, 16.3, 16.4, 16.5_
-  - [ ] 1.5 Add `SecurityEventDto` schema additions to `court-booking-common`
+  - [x] 1.5 Add `SecurityEventDto` schema additions to `court-booking-common`
     - In `court-booking-common/src/main/java/gr/courtbooking/common/event/`, create `SecurityAlertEvent` record with fields `alertType` (enum: BOOKING_ABUSE, PAYMENT_FRAUD, SCRAPING, BRUTE_FORCE, SUSPICIOUS_LOGIN, RATE_LIMIT_EXCEEDED, WEBHOOK_REPLAY, ACCOUNT_TAKEOVER), `severity` (enum: LOW, MEDIUM, HIGH, CRITICAL), `userId` (nullable UUID), `ipAddress` (nullable String), `description` (String, ≤1000 chars validated), `metadata` (Map<String,Object> serialized to JSON, ≤10 KB validated), `timestamp` (Instant), `eventId` (UUID, deduplication key for consumer idempotency)
     - Create `SecurityAlertEventValidator` utility enforcing description and metadata size limits, throwing `IllegalArgumentException` with the failing field name on violation
     - Match the schema in `docs/api/kafka-event-contracts.json` under `SECURITY_ALERT`; if the contract file is missing the `eventId` field, update it as part of this task
     - **IMPORTANT:** Deprecate and replace the existing `gr.courtbooking.common.event.payload.security.SecurityAlertPayload` record (which has a fixed `AlertMetadata` schema) with the new `SecurityAlertEvent` that uses `Map<String,Object>` for flexible metadata. Update any existing references to `SecurityAlertPayload` across both services to use the new record. The old record's fixed fields (`endpoint`, `requestCount`, `windowSeconds`, `threshold`, `userAgent`, `geoLocation`, `stripeEventId`) become metadata map entries in the new schema
     - _Requirements: 2.2, 29.5_
-  - [ ]* 1.6 Write unit tests for `SecurityAlertEvent` validation
+  - [x] 1.6 Write unit tests for `SecurityAlertEvent` validation
     - Test description >1000 chars rejected, metadata >10KB rejected, all enum values accepted, null userId/ipAddress accepted, eventId is required
     - _Requirements: 2.2_
 
-- [ ] 2. PiiSanitizationFilter wiring in both services
-  - [ ] 2.1 Wire `PiiSanitizationFilter` into Platform Service Logback config
+- [x] 2. PiiSanitizationFilter wiring in both services
+  - [x] 2.1 Wire `PiiSanitizationFilter` into Platform Service Logback config
     - Update `court-booking-platform-service/src/main/resources/logback-spring.xml` to register `<turboFilter class="gr.courtbooking.common.logging.PiiSanitizationFilter"/>` at the root `<configuration>` level so all log events pass through the filter before reaching appenders
     - Verify the filter applies to console, file, and structured-JSON appenders by adding a smoke test that logs a JWT-like string and asserts the captured output contains `[REDACTED]`
     - _Requirements: 16.1, 16.3, 16.5_
-  - [ ] 2.2 Wire `PiiSanitizationFilter` into Transaction Service Logback config
+  - [x] 2.2 Wire `PiiSanitizationFilter` into Transaction Service Logback config
     - Mirror the `logback-spring.xml` change in `court-booking-transaction-service/src/main/resources/`
     - Add the same smoke test in the Transaction Service test sources
     - _Requirements: 16.1, 16.3, 16.5_
-  - [ ]* 2.3 Write integration test asserting Authorization headers are masked in MDC and access logs
+  - [x] 2.3 Write integration test asserting Authorization headers are masked in MDC and access logs
     - In both services, write a test that issues an HTTP request with `Authorization: Bearer eyJabc...` and asserts the captured access-log entry redacts the token value
     - _Requirements: 16.5_
 
-- [ ] 3. Checkpoint — Ensure migrations and shared common-module code pass tests
+- [x] 3. Checkpoint — Ensure migrations and shared common-module code pass tests
   - Ensure all tests pass (run `./gradlew :court-booking-common:test :court-booking-platform-service:test :court-booking-transaction-service:test`), ask the user if questions arise.
 
-- [ ] 4. Transaction Service — JwksCachingService and JWKS HTTP client
-  - [ ] 4.1 Create `JwksCachingService` and `JwksHttpClient`
+- [x] 4. Transaction Service — JwksCachingService and JWKS HTTP client
+  - [x] 4.1 Create `JwksCachingService` and `JwksHttpClient`
     - Create `court-booking-transaction-service/src/main/java/gr/courtbooking/transaction/security/jwks/JwksCachingService.java` with API `Optional<RSAPublicKey> getKey(String kid)`. Internally maintain `ConcurrentHashMap<String, CachedKey>` where `CachedKey` holds `(RSAPublicKey key, Instant fetchedAt, Instant retiredAt)`
     - On miss, invoke `JwksHttpClient.fetchJwks()` and update the cache; entries removed from the upstream JWKS are marked retired with `retiredAt = now` and remain usable for 15 minutes per Req 1.8
     - Implement TTL refresh: 24-hour mandatory refresh; on background failure, retain existing keys and retry with exponential backoff (1s, 2s, 4s, max 60s); emit metric `jwks_unavailable_total` on each failure
     - Create `gr.courtbooking.transaction.security.jwks.JwksHttpClient` using Spring `RestClient` to fetch `${platform-service.base-url}/api/auth/.well-known/jwks.json`, parsing the JWK Set with `nimbus-jose-jwt`
     - _Requirements: 1.8, 18.1_
-  - [ ] 4.2 Wire `JwksCachingService` into a new Transaction Service `JwtAuthenticationFilter`
+  - [x] 4.2 Wire `JwksCachingService` into a new Transaction Service `JwtAuthenticationFilter`
     - **NOTE:** The existing `JwtAuthenticationFilter` lives in `gr.courtbooking.platform.adapter.in.web.security` (Platform Service only) — it is NOT in `court-booking-common`. Phase 7 creates a new Transaction-Service-specific `JwtAuthenticationFilter` in `court-booking-transaction-service/src/main/java/gr/courtbooking/transaction/security/filter/JwtAuthenticationFilter.java` that validates RS256 JWTs using keys resolved from `JwksCachingService`. This filter mirrors the Platform Service filter's contract (extracts `sub`, `role`, `exp` claims; sets `SecurityContextHolder` with an `AuthenticatedUser` principal) but resolves keys via JWKS HTTP fetch rather than a local key store
     - Create `gr.courtbooking.transaction.security.filter.JwtAuthenticationFilter` extending `OncePerRequestFilter`. On every non-public request, extract the `Authorization: Bearer <token>` header, parse the JWT header to get the `kid`, call `JwksCachingService.getKey(kid)` to resolve the RSA public key, verify the RS256 signature, validate `exp` and `iss` claims, and set the `SecurityContext` with the authenticated user
     - On `getKey()` returning `null` (key not found after refresh) AND background JWKS retries failing, return `503 Service Unavailable` with body `{"error":"JWKS_UNAVAILABLE"}`
@@ -73,18 +73,18 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - **Property 5: JWKS Retired Key Grace Period** — for any key rotation where a key is removed from the upstream JWKS, tokens signed with that key remain valid for at least 15 minutes after removal is detected
     - Use jqwik with simulated time and a fake `JwksHttpClient` that toggles between healthy/unhealthy
     - **Validates: Requirement 1.8**
-  - [ ] 4.4 Write unit tests for `JwksCachingService`
+  - [x] 4.4 Write unit tests for `JwksCachingService`
     - Test miss-then-fetch, hit returns cached key, kid eviction triggers refresh, retired key remains usable for 15 minutes, exponential backoff sequence on consecutive failures
     - _Requirements: 1.8_
 
-- [ ] 5. Transaction Service — IP blocklist filter with LRU fallback
-  - [ ] 5.1 Create `IpBlocklistRedisAdapter` and LRU fallback cache
+- [x] 5. Transaction Service — IP blocklist filter with LRU fallback
+  - [x] 5.1 Create `IpBlocklistRedisAdapter` and LRU fallback cache
     - In `court-booking-transaction-service/src/main/java/gr/courtbooking/transaction/security/blocklist/`, create `IpBlocklistPort` with `boolean isBlocked(String ipAddress)` and `IpBlocklistRedisAdapter` implementing the port. Read from Redis SET `ip:blocklist` (exact matches) and sorted set `ip:blocklist:cidr` (CIDR ranges) using the same key contract as Platform Service
     - Add a process-local LRU cache (Caffeine, max 1000 entries, 60-second TTL refreshed on every successful Redis read) used as fallback when Redis is unavailable
     - Implement fail-closed: if Redis has been unavailable for >30 seconds AND the LRU cache has no entry for the requested IP (cold start or fully evicted), return a sentinel that the filter translates to `503 Service Unavailable`
     - Emit Micrometer metric `blocklist_redis_unavailable` on every Redis failure
     - _Requirements: 7.4, 7.5_
-  - [ ] 5.2 Create `IpBlocklistFilter` and register it in `SecurityConfig` filter chain
+  - [x] 5.2 Create `IpBlocklistFilter` and register it in `SecurityConfig` filter chain
     - Create `court-booking-transaction-service/src/main/java/gr/courtbooking/transaction/security/IpBlocklistFilter.java` extending `OncePerRequestFilter`. On every request, extract the client IP (X-Forwarded-For first, then RemoteAddr) and call `IpBlocklistPort.isBlocked()`; if blocked, respond with `403 Forbidden` and body `{"error":"IP_BLOCKED"}`
     - Insert this filter BEFORE `JwtAuthenticationFilter` so blocked IPs are rejected before any JWT processing
     - _Requirements: 7.4, 7.5_
@@ -93,8 +93,8 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - **Property 22: IP Blocklist Fail-Closed** — for any state where Redis has been unavailable for >30 seconds and the LRU cache has no entry for the requesting IP, the request receives 503 Service Unavailable
     - **Validates: Requirements 7.4, 7.5**
 
-- [ ] 6. Transaction Service — Replace no-op `SecurityConfig` with full role-based authorization
-  - [ ] 6.1 Replace `SecurityConfig.securityFilterChain()` with role-based wiring
+- [x] 6. Transaction Service — Replace no-op `SecurityConfig` with full role-based authorization
+  - [x] 6.1 Replace `SecurityConfig.securityFilterChain()` with role-based wiring
     - Replace the `.anyRequest().permitAll()` rule in `court-booking-transaction-service/src/main/java/gr/courtbooking/transaction/config/SecurityConfig.java` with explicit role-matched rules per Req 1 AC 4–7:
       - CUSTOMER role: `POST /api/bookings`, `PUT /api/bookings/{id}/modify`, `POST /api/bookings/{id}/cancel`, `GET /api/bookings`, `GET /api/bookings/{id}`, `GET /api/bookings/{id}/receipt`
       - COURT_OWNER role: `POST /api/bookings/manual`, `POST /api/bookings/{id}/confirm`, `POST /api/bookings/{id}/reject`, `POST /api/bookings/{id}/no-show`, `POST /api/bookings/{id}/mark-paid`, `POST /api/bookings/bulk-action`, `GET /api/bookings/calendar/ical`, `GET /api/bookings/pending`
@@ -104,11 +104,11 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - Configure a `Http403ForbiddenEntryPoint` and a JSON `AccessDeniedHandler` that returns `{"error":"FORBIDDEN","reason":"INSUFFICIENT_ROLE"}` on 403 and `{"error":"UNAUTHORIZED","reason":"<JWT_MISSING|JWT_EXPIRED|JWT_INVALID_SIGNATURE>"}` on 401
     - Remove the `TODO: Add JWT filter and role-based enforcement` comment block and replace the Javadoc note about "permissive configuration" with the final role matrix
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
-  - [ ] 6.2 Implement booking-resource ownership check in controller advice
+  - [x] 6.2 Implement booking-resource ownership check in controller advice
     - Create `gr.courtbooking.transaction.security.BookingOwnershipGuard` invoked from `BookingController.getBooking()` and `getReceipt()` methods (or via a dedicated `@PreAuthorize` SpEL expression). Compare the JWT `sub` claim with `booking.customerId` and reject with `403 Forbidden` on mismatch
     - For COURT_OWNER role accessing `/api/bookings/{id}`, allow only if the booking's `courtId` belongs to a court owned by the authenticated user (resolve via the existing CourtRepository or a cached `CourtOwnershipPort`)
     - _Requirements: 1.9_
-  - [ ] 6.3 Create `TransactionRateLimitFilter`
+  - [x] 6.3 Create `TransactionRateLimitFilter`
     - Create `court-booking-transaction-service/src/main/java/gr/courtbooking/transaction/security/TransactionRateLimitFilter.java` mirroring the Platform Service `RateLimitFilter` contract: 100 read requests/min and 30 write requests/min per authenticated user, keyed in Redis under `tx-rate-limit:{userId}:{read|write}` with a 60-second sliding window. Reject excess with `429 Too Many Requests` and `Retry-After` header
     - For unauthenticated routes (Stripe webhook, WebSocket upgrade, actuator), bypass the filter
     - _Requirements: 1.7, 6.3, 6.4_
@@ -117,25 +117,25 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - **Property 2: Role-Based Access Enforcement** — for any authenticated request where role does not match endpoint requirement, response is always 403
     - **Property 3: Resource Ownership Enforcement** — for any CUSTOMER `GET /api/bookings/{id}` where JWT `sub` ≠ booking customerId, response is always 403
     - **Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.9**
-  - [ ] 6.5 Write integration tests for the new SecurityConfig
+  - [x] 6.5 Write integration tests for the new SecurityConfig
     - Test each role-matched endpoint with valid token of correct role (200/202), wrong role (403), missing token (401), expired token (401), invalid signature (401)
     - Test public endpoints accept unauthenticated requests
     - _Requirements: 1.1–1.9_
 
-- [ ] 7. Transaction Service — Booking abuse detection
-  - [ ] 7.1 Create `BookingAbuseFilter` and detection ports
+- [x] 7. Transaction Service — Booking abuse detection
+  - [x] 7.1 Create `BookingAbuseFilter` and detection ports
     - Create `court-booking-transaction-service/src/main/java/gr/courtbooking/transaction/security/abuse/BookingAbuseFilter.java` invoked AFTER `JwtAuthenticationFilter` for `POST /api/bookings*` paths only. Calls `BookingVelocityDetector`, `DuplicateBookingDetector`, `CourtBlockEnforcer`, and `InstantPayRestrictionEnforcer` in sequence
     - Create ports in `application/port/out/` for each detector and adapters in `adapter/out/redis/`
     - _Requirements: 3.1–3.5_
-  - [ ] 7.2 Implement booking velocity and duplicate detection
+  - [x] 7.2 Implement booking velocity and duplicate detection
     - `BookingVelocityRedisAdapter`: Redis sorted-set sliding-window counter `booking-velocity:{userId}:{60m|24h}` counting only CONFIRMED + PENDING_CONFIRMATION bookings. Reject 6th in 60-min window or 11th in 24-hour window with `429 Too Many Requests`
     - `DuplicateBookingRedisAdapter`: Redis SETNX with key `booking-dedupe:{userId}:{courtId}:{date}:{startTime}` and 5-second TTL. Reject duplicates with `409 Conflict`
     - _Requirements: 3.1, 3.5_
-  - [ ] 7.3 Implement court-specific block enforcement and cancel-pattern detection
+  - [x] 7.3 Implement court-specific block enforcement and cancel-pattern detection
     - `CourtCancelPatternDetector` (background trigger on cancellation events): when a user cancels >3 bookings for the same court in a rolling 24-hour window, publish a MEDIUM SECURITY_ALERT and SET `court-block:{userId}:{courtId}` in Redis with 48-hour TTL
     - `CourtBlockEnforcer`: on every booking attempt, check the court-block key; if present, reject with `403 Forbidden` body `{"error":"COURT_BLOCKED","reason":"REPEATED_CANCELLATIONS","blockUntil":"..."}`
     - _Requirements: 3.2, 3.3_
-  - [ ] 7.4 Implement peak-cancel detection and instant-pay restriction
+  - [x] 7.4 Implement peak-cancel detection and instant-pay restriction
     - `PeakCancelDetector`: when a user cancels >5 peak-time bookings (peak-time determined by `pricing_rules.is_peak`) in a rolling 7-day window, publish HIGH SECURITY_ALERT and set Redis key `instant-pay-only:{userId}` with 14-day TTL
     - `InstantPayRestrictionEnforcer`: on every booking attempt where the booking would normally allow deferred payment, check the instant-pay-only key; if present, force `paymentMode = INSTANT` and reject manual-payment paths
     - _Requirements: 3.4_
@@ -144,19 +144,19 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - **Property 9: Court-Specific Block Enforcement** — after >3 cancellations on same court in 24h, all subsequent bookings for that court within 48h ⇒ 403
     - **Property 10: Duplicate Booking Rejection** — two booking requests for same (user, court, date, startTime) within 5s ⇒ second is 409
     - **Validates: Requirements 3.1, 3.2, 3.3, 3.5**
-  - [ ] 7.6 Write unit tests for each booking abuse detector
+  - [x] 7.6 Write unit tests for each booking abuse detector
     - Test sliding-window counters with simulated time, court-block lifecycle, instant-pay-only flag application, peak-time detection logic
     - _Requirements: 3.1–3.5_
 
 
-- [ ] 8. Transaction Service — Payment fraud detection
-  - [ ] 8.1 Implement card-testing detection (failed and successful)
+- [x] 8. Transaction Service — Payment fraud detection
+  - [x] 8.1 Implement card-testing detection (failed and successful)
     - Create `CardTestingDetectionService` in `gr.courtbooking.transaction.security.fraud` invoked from the existing payment failure and payment success handlers
     - Track distinct card fingerprints per user in Redis sorted set `card-testing:{userId}:failed:1h` and `card-testing:{userId}:succeeded:1h`, where each entry is the Stripe PaymentMethod card fingerprint with score = epoch-ms timestamp
     - On 3rd distinct failed fingerprint within 1-hour window, publish HIGH SECURITY_ALERT and set Redis key `payment-block:{userId}` with 1-hour TTL; on subsequent payment attempts, reject with `429 Too Many Requests` body `{"error":"PAYMENT_BLOCKED","retryAfterSeconds":<n>}`
     - On 3rd distinct successful fingerprint within 1-hour window, publish MEDIUM SECURITY_ALERT (no block, monitoring only)
     - _Requirements: 4.3, 4.4_
-  - [ ] 8.2 Implement card country mismatch detection
+  - [x] 8.2 Implement card country mismatch detection
     - In the post-payment-confirmation flow, compare `paymentMethod.card.country` with the user's billing-address country derived from the `users.billing_country` column (read via existing `UserPort` cross-schema view)
     - On mismatch: SET `bookings.fraud_review_required = TRUE`, write `{"fraud_card_country": "<x>", "fraud_user_country": "<y>"}` into `bookings.fraud_metadata`, and emit metric `payment_country_mismatch_total`
     - If `paymentMethod.card.country` is null (digital wallet), skip the check and log at INFO level
@@ -164,17 +164,17 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
   - [ ]* 8.3 Write property test for **Property 12: Card-Testing Detection**
     - **Property 12: Card-Testing Detection** — for any user accumulating ≥3 failed payments with distinct card fingerprints within a 1-hour window, a HIGH SECURITY_ALERT is always published and further payment attempts are blocked for 1 hour
     - **Validates: Requirement 4.3**
-  - [ ] 8.4 Write unit tests for card-testing and country-mismatch logic
+  - [x] 8.4 Write unit tests for card-testing and country-mismatch logic
     - Test sliding-window distinct-fingerprint count, 1-hour block lifecycle, country-mismatch fraud metadata writes, null-country skip behavior
     - _Requirements: 4.3, 4.4, 4.5, 4.6_
 
-- [ ] 9. Transaction Service — Chargeback rate evaluation job and UNDER_REVIEW transition
-  - [ ] 9.1 Create `ChargebackRateEvaluationJob` (Quartz)
+- [x] 9. Transaction Service — Chargeback rate evaluation job and UNDER_REVIEW transition
+  - [x] 9.1 Create `ChargebackRateEvaluationJob` (Quartz)
     - Create `gr.courtbooking.transaction.security.fraud.ChargebackRateEvaluationJob` in `application/scheduled/`. Schedule every 15 minutes via the existing Quartz cluster pattern from Phase 4/5
     - For each court owner with at least 1 successful payment in the rolling 90-day window: compute `disputeCount / totalSuccessfulPaymentCount`. If rate > 0.75% AND ≤ 1.0%, publish HIGH SECURITY_ALERT (alertType=PAYMENT_FRAUD); if rate > 1.0%, publish CRITICAL SECURITY_ALERT
     - Use a single SQL aggregation query with `LEFT JOIN` to `disputes` to avoid per-user round-trips
     - _Requirements: 4.1, 4.2_
-  - [ ] 9.2 Implement UNDER_REVIEW transition for court owner
+  - [x] 9.2 Implement UNDER_REVIEW transition for court owner
     - On CRITICAL chargeback alert (rate > 1.0%), call `UserStripeStatusPort.setStatus(courtOwnerId, UNDER_REVIEW)` which writes `users.stripe_connect_status='UNDER_REVIEW'` via internal cross-service API or Kafka command (use whichever pattern is already established in Phase 4/5; if Kafka command, route via `platform-commands` topic with command type `SET_STRIPE_STATUS`)
     - In the booking creation flow, reject new bookings for courts owned by users with `stripe_connect_status='UNDER_REVIEW'` until a PLATFORM_ADMIN resolves the alert
     - When a PLATFORM_ADMIN transitions the alert to RESOLVED via `POST /api/admin/security/alerts/{id}/resolve`, the AlertStatusTransitionService (Task 19) emits a `STRIPE_STATUS_RESET` command that flips the user back to ACTIVE
@@ -182,36 +182,36 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
   - [ ]* 9.3 Write property test for **Property 11: Chargeback Rate Alert Thresholds**
     - **Property 11: Chargeback Rate Alert Thresholds** — for any court owner whose chargeback rate exceeds 0.75%, a HIGH SECURITY_ALERT is published; for rates exceeding 1.0%, a CRITICAL alert is published and the account transitions to UNDER_REVIEW
     - **Validates: Requirements 4.1, 4.2**
-  - [ ] 9.4 Write unit tests for ChargebackRateEvaluationJob
+  - [x] 9.4 Write unit tests for ChargebackRateEvaluationJob
     - Test threshold edge cases (exactly 0.75%, 1.0%, just above each), zero-payment owners are skipped, alert deduplication within the same 15-minute window
     - _Requirements: 4.1, 4.2_
 
-- [ ] 10. Transaction Service — Payout fraud detection
-  - [ ] 10.1 Implement payout amount and weekly total checks
+- [x] 10. Transaction Service — Payout fraud detection
+  - [x] 10.1 Implement payout amount and weekly total checks
     - Create `gr.courtbooking.transaction.security.fraud.PayoutFraudDetectionService` invoked from the existing payout creation flow (just before the Stripe Transfer API call)
     - Single payout > €5,000: publish MEDIUM SECURITY_ALERT (alertType=PAYMENT_FRAUD), set `payments.payout_status='HELD'`, store the alert ID in `payments.payout_held_alert_id`
     - Weekly total (Monday 00:00 UTC – Sunday 23:59 UTC) > €10,000: publish HIGH SECURITY_ALERT, set `payout_status='HELD'`
     - 4-week percentage spike: if current week > 300% of preceding 4-week average AND owner has ≥4 weeks of history, publish HIGH SECURITY_ALERT, set `payout_status='HELD'`. Skip if <4 weeks of history
     - _Requirements: 20.1, 20.2, 20.3, 20.4, 20.5_
-  - [ ] 10.2 Wire HELD payout enforcement into Stripe transfer flow
+  - [x] 10.2 Wire HELD payout enforcement into Stripe transfer flow
     - In the existing `StripeTransferService` (or equivalent), check `payments.payout_status` before initiating the Stripe transfer. If HELD, skip the transfer and emit metric `payout_held_skipped_total`
     - When a PLATFORM_ADMIN resolves the alert via `POST /api/admin/security/alerts/{id}/resolve` with status RESOLVED, the platform service publishes a `RELEASE_PAYOUT_HOLD` command on `platform-commands` Kafka topic; the Transaction Service consumer flips `payout_status` to NORMAL (or CANCELLED if status=FALSE_POSITIVE) and triggers a delayed Stripe transfer
     - _Requirements: 20.4_
-  - [ ] 10.3 Write unit tests for payout fraud detection
+  - [x] 10.3 Write unit tests for payout fraud detection
     - Test single-amount threshold, weekly aggregation across timezone boundaries, 4-week spike calculation, <4-week history skip, HELD status persistence
     - _Requirements: 20.1–20.5_
 
-- [ ] 11. Transaction Service — Self-booking fraud detection
-  - [ ] 11.1 Create `UserLastSeenAdapter` with Redis-first/DB-fallback persistence
+- [x] 11. Transaction Service — Self-booking fraud detection
+  - [x] 11.1 Create `UserLastSeenAdapter` with Redis-first/DB-fallback persistence
     - In `court-booking-transaction-service/src/main/java/gr/courtbooking/transaction/security/lastseen/`, create `UserLastSeenPort` (`Optional<UserLastSeen> get(UUID userId)`, `void recordRequest(UUID userId, String ipAddress, String deviceId)`)
     - `UserLastSeenRedisAdapter`: writes to `user:last-seen:{userId}` HASH with fields `ipAddress`, `deviceId`, `lastSeenAt`; 30-day TTL refreshed on every request
     - Batched DB persistence: a Spring `@Async` task triggered at most once per 5 minutes per user (debounced via Redis SETNX `user:last-seen-flush:{userId}` with 5-min TTL) writes the latest values to `users.last_known_ip_address`, `users.last_known_device_id`, `users.last_seen_at`
     - On Redis unavailability, `get()` falls back to reading the persisted columns directly
     - _Requirements: 21.4_
-  - [ ] 11.2 Wire `UserLastSeenAdapter` into request handling
+  - [x] 11.2 Wire `UserLastSeenAdapter` into request handling
     - Create `gr.courtbooking.transaction.security.lastseen.UserLastSeenInterceptor` (Spring `HandlerInterceptor`) registered for `/api/**` paths excluding webhooks. After successful authentication, extract user ID from JWT, IP from request, device ID from `X-Device-ID` header (if present), and call `UserLastSeenPort.recordRequest()`
     - _Requirements: 21.4_
-  - [ ] 11.3 Implement self-booking fraud detection
+  - [x] 11.3 Implement self-booking fraud detection
     - In the booking creation flow (`BookingService.createBooking()`), after persisting the booking but before payment confirmation, call `SelfBookingFraudDetector.evaluate(booking, customer, courtOwner)`
     - Indicators (any one match → CRITICAL alert): customer's request IP equals `courtOwner.last_known_ip_address`, customer's request device ID equals `courtOwner.last_known_device_id`, customer account `created_at` is within 24 hours before booking time
     - On match: publish CRITICAL SECURITY_ALERT (alertType=PAYMENT_FRAUD) with metadata `{"matchedIndicators":[...], "accountAgeHours":<n>}`, SET `payments.payout_status='HELD'`, store alert ID in `payments.payout_held_alert_id`
@@ -219,12 +219,12 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
   - [ ]* 11.4 Write property test for **Property 13: Self-Booking Fraud Payout Hold**
     - **Property 13: Self-Booking Fraud Payout Hold** — for any booking where customer IP/deviceId matches court owner's last-seen, or customer account is <24h old, the associated payment's payout_status is always HELD
     - **Validates: Requirement 21**
-  - [ ] 11.5 Write unit tests for self-booking detection
+  - [x] 11.5 Write unit tests for self-booking detection
     - Test each indicator independently and in combination, account-age boundary (exactly 24h), Redis-fallback to DB columns
     - _Requirements: 21.1–21.4_
 
-- [ ] 12. Transaction Service — `SecurityEventKafkaPublisher`
-  - [ ] 12.1 Create `SecurityEventKafkaPublisher` with retry/backoff
+- [x] 12. Transaction Service — `SecurityEventKafkaPublisher`
+  - [x] 12.1 Create `SecurityEventKafkaPublisher` with retry/backoff
     - In `court-booking-transaction-service/src/main/java/gr/courtbooking/transaction/security/event/`, create `SecurityEventPublisherPort` and `SecurityEventKafkaPublisher` adapter that publishes `SecurityAlertEvent` to the `security-events` Kafka topic using the existing `KafkaTemplate` configuration
     - Set the Kafka message key to `userId` (when present) or `ipAddress` (when present) or a random UUID, ensuring per-key ordering for related events
     - Retry on `KafkaException`: 3 attempts with backoff (1s, 2s, 4s); on final failure, log at ERROR level with the full event payload and emit metric `security_event_publish_failed_total`
@@ -233,15 +233,15 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
   - [ ]* 12.2 Write property test for **Property 6: Security Alert Schema Completeness**
     - **Property 6: Security Alert Schema Completeness** — for any SECURITY_ALERT event published to Kafka, the event always contains alertType (valid enum), severity (valid enum), description (non-empty, ≤1000 chars), metadata (≤10KB), timestamp (ISO-8601)
     - **Validates: Requirement 2.2**
-  - [ ] 12.3 Write unit tests for SecurityEventKafkaPublisher
+  - [x] 12.3 Write unit tests for SecurityEventKafkaPublisher
     - Test successful publish, retry sequence on transient failure, final-failure logging, Kafka key selection priority
     - _Requirements: 2.1, 2.8_
 
-- [ ] 13. Checkpoint — Ensure Transaction Service security wiring and detection logic pass tests
+- [x] 13. Checkpoint — Ensure Transaction Service security wiring and detection logic pass tests
   - Ensure all tests pass (run `./gradlew :court-booking-transaction-service:allTests`), ask the user if questions arise.
 
-- [ ] 14. Transaction Service — WebSocket interceptors (token refresh, channel auth, message validation)
-  - [ ] 14.1 Create `ChannelAuthorizationInterceptor`
+- [x] 14. Transaction Service — WebSocket interceptors (token refresh, channel auth, message validation)
+  - [x] 14.1 Create `ChannelAuthorizationInterceptor`
     - In `court-booking-transaction-service/src/main/java/gr/courtbooking/transaction/websocket/security/`, create `ChannelAuthorizationInterceptor` implementing `ChannelInterceptor`. On STOMP `SUBSCRIBE` frames, parse the destination and validate against the role/destination matrix from Req 13:
       - CUSTOMER may subscribe to `/user/queue/bookings` (own bookings only — verified by `sub` claim), `/user/queue/notifications`, `/topic/courts/*/availability`
       - COURT_OWNER may subscribe to `/user/queue/bookings` (only for bookings on courts they own — verified by `CourtOwnershipPort`), `/user/queue/notifications`, `/topic/courts/*/availability`
@@ -249,20 +249,20 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - On unauthorized subscription, send STOMP ERROR frame to the client and close the WebSocket with close code `4002`
     - For `/topic/courts/*/availability`, ensure outbound messages strip customer names, user IDs, and contact details
     - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5_
-  - [ ] 14.2 Create `MessageValidationInterceptor` and rate limiting
+  - [x] 14.2 Create `MessageValidationInterceptor` and rate limiting
     - Create `MessageValidationInterceptor` implementing `ChannelInterceptor` for inbound messages. Validate STOMP frame structure and message body schemas (per `websocket-message-contracts.json`); on invalid frame, increment a per-connection counter
     - Enforce 64KB max message size; oversize → close with code `4004`
     - On 3 invalid frames accumulated, close with code `4004` and STOMP ERROR frame
     - Rate-limit: 10 messages/second per connection via Redis `ws-rate:{sessionId}` sliding-window; on exceedance, drop excess messages and emit a single warning frame on `/user/queue/system` per 1-second throttle window
     - On 3 consecutive seconds of rate-limit exceedance, close with code `4003`
     - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5_
-  - [ ] 14.3 Create `TokenRefreshHandler`
+  - [x] 14.3 Create `TokenRefreshHandler`
     - Create `TokenRefreshHandler` registered as a STOMP `@MessageMapping("/app/token-refresh")` endpoint. Validate the new JWT's RS256 signature via `JwksCachingService`, verify the new `sub` claim equals the connection's authenticated user ID
     - On valid refresh: update connection metadata's `tokenExpiresAt` to the new `exp` claim; on `sub` mismatch: send STOMP ERROR frame on `/user/queue/system` WITHOUT closing the connection (per Req 12.7); on signature failure: send STOMP ERROR frame
     - Add a scheduled task (per-session) that, when current time is within 60 seconds of `tokenExpiresAt`, sends a `TOKEN_EXPIRING` message to `/user/queue/system` matching the contract in `docs/api/websocket-message-contracts.json`
     - If no valid refresh received within 60 seconds of TOKEN_EXPIRING, close connection with code `4001`
     - _Requirements: 12.4, 12.5, 12.6, 12.7_
-  - [ ] 14.4 Register interceptors in `WebSocketConfig`
+  - [x] 14.4 Register interceptors in `WebSocketConfig`
     - Update the existing Phase 5 `WebSocketConfig` (in transaction-service) to add `ChannelAuthorizationInterceptor` and `MessageValidationInterceptor` to both `clientInboundChannel` and `clientOutboundChannel` as appropriate. Do NOT modify the existing JWT-on-handshake logic from Phase 5; this task layers in-connection security on top
     - _Requirements: 12.1, 12.2, 12.3_
   - [ ]* 14.5 Write property tests for **Property 23: WebSocket Token Refresh Sub-Claim Consistency**, **Property 24: WebSocket Channel Authorization**, **Property 25: WebSocket Message Size Limit**, **Property 26: WebSocket Rate Limit Disconnection**
@@ -271,22 +271,22 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - **Property 25** — for any incoming WS message >65,536 bytes, message is rejected and the invalid counter increments
     - **Property 26** — for any connection exceeding 10 msg/s for 3 consecutive seconds, connection is closed with code 4003
     - **Validates: Requirements 12.7, 13.1, 13.2, 13.3, 14.3, 14.5**
-  - [ ] 14.6 Write integration tests for WebSocket interceptors
+  - [x] 14.6 Write integration tests for WebSocket interceptors
     - Test handshake → SUBSCRIBE flow per role/destination matrix, token-refresh happy path, sub-claim mismatch, message-size violation, rate-limit-exceedance disconnection
     - _Requirements: 12.4–12.7, 13.1–13.5, 14.1–14.5_
 
-- [ ] 15. Transaction Service — `BookingAnonymizationJob`
-  - [ ] 15.1 Create monthly `BookingAnonymizationJob`
+- [x] 15. Transaction Service — `BookingAnonymizationJob`
+  - [x] 15.1 Create monthly `BookingAnonymizationJob`
     - Create `gr.courtbooking.transaction.scheduled.BookingAnonymizationJob` scheduled monthly (1st of month, 02:00 UTC). For bookings older than 2 years, replace customer names and emails referenced in `bookings.metadata` JSON with `"Anonymized User"` and empty string respectively, retaining `amountCents`, `bookingDate`, `courtId`, and other operational fields
     - Process up to 10,000 records per execution (LIMIT 10000 per query batch). On batch failure, roll back the batch via `@Transactional` boundary, log the count of successfully processed rows before failure, retry on next scheduled run
     - Emit summary event to `security_audit_trail` (via cross-service command if necessary, or to the `security-events` topic with alertType=DATA_RETENTION) with `{"job":"BookingAnonymizationJob","recordsProcessed":<n>}`
     - _Requirements: 17.3, 17.5, 17.6_
-  - [ ]* 15.2 Write unit tests for BookingAnonymizationJob
+  - [x] 15.2 Write unit tests for BookingAnonymizationJob
     - Test PII replacement preserves operational fields, batch limit enforcement, rollback on mid-batch failure, summary event emission
     - _Requirements: 17.3, 17.5, 17.6_
 
-- [ ] 16. Platform Service — Scraping detection
-  - [ ] 16.1 Create `ScrapingDetectionFilter` and Redis adapter
+- [x] 16. Platform Service — Scraping detection
+  - [x] 16.1 Create `ScrapingDetectionFilter` and Redis adapter
     - In `court-booking-platform-service/src/main/java/gr/courtbooking/platform/security/scraping/`, create `ScrapingDetectionFilter` running AFTER `SuspendedUserFilter` in the filter chain (per the design document's filter chain diagram — see Task 52.1 for registration). For every request, evaluate three indicators per Req 6 AC 1:
       - (a) Missing or empty `User-Agent` header
       - (b) Sustained request rate >10 req/s over a rolling 5-second window — track in Redis sorted set `scrape-rate:{ip}` with score=epoch-ms
@@ -297,12 +297,12 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
   - [ ]* 16.2 Write property test for **Property 20: Scraping Detection — High Frequency**
     - **Property 20** — for any IP exceeding 50 requests within a 5-second window (i.e., sustained >10 req/s), a MEDIUM SCRAPING alert is always published
     - **Validates: Requirement 6.1(b)**
-  - [ ] 16.3 Write unit tests for ScrapingDetectionService
+  - [x] 16.3 Write unit tests for ScrapingDetectionService
     - Test each indicator independently, distinct-path-parameter counting for UUID enumeration, alert deduplication within a 60-second window per IP
     - _Requirements: 6.1, 6.2_
 
-- [ ] 17. Platform Service — Progressive rate limiting
-  - [ ] 17.1 Implement `ProgressiveRateLimitService` extending `ApiRateLimitFilter`
+- [x] 17. Platform Service — Progressive rate limiting
+  - [x] 17.1 Implement `ProgressiveRateLimitService` extending `ApiRateLimitFilter`
     - In `court-booking-platform-service/src/main/java/gr/courtbooking/platform/security/ratelimit/`, create `ProgressiveRateLimitService` invoked when the existing `ApiRateLimitFilter` records a violation
     - Track violation count in Redis sorted set `rate-violations:{userId-or-ip}` over a rolling 1-hour window. Lockout durations: 1st violation=0s, 2nd=60s, 3rd=300s, 4th=900s, 5th+=3600s
     - Set `rate-lock:{userId-or-ip}` with the appropriate TTL. While the lock is active, every request from that identifier is rejected with `429 Too Many Requests` and `Retry-After` header equal to the remaining TTL
@@ -313,25 +313,25 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - **Property 18** — for any sequence of violations within a 1-hour window, lockout duration is monotonically non-decreasing (0s → 60s → 300s → 900s → 3600s)
     - **Property 19** — for any user/IP with no violations for 1 hour, escalation level resets to zero
     - **Validates: Requirements 6.3, 6.5**
-  - [ ] 17.3 Write unit tests for ProgressiveRateLimitService
+  - [x] 17.3 Write unit tests for ProgressiveRateLimitService
     - Test each escalation step, reset behavior at exactly 1 hour, Retry-After header value matches remaining TTL
     - _Requirements: 6.3–6.5_
 
-- [ ] 18. Platform Service — Brute-force detection and account-level lockout
-  - [ ] 18.1 Implement dual-key failed-auth tracking
+- [x] 18. Platform Service — Brute-force detection and account-level lockout
+  - [x] 18.1 Implement dual-key failed-auth tracking
     - Extend the existing Phase 2 failed-auth tracking in `court-booking-platform-service/src/main/java/gr/courtbooking/platform/auth/security/` to record EVERY failed authentication in TWO Redis sliding-window counters: `failed-auth:ip:{ip}` (existing 20-per-15min Phase 2 counter, unchanged) and `failed-auth:email:{email}` (new 5-per-15min counter)
     - On every failed attempt, also persist to the existing `failed_auth_attempts` table (Phase 1b schema) with both `ip_address` and `email` populated for audit
     - _Requirements: 5.5, 28.4_
-  - [ ] 18.2 Implement account-level lockout
+  - [x] 18.2 Implement account-level lockout
     - When `failed-auth:email:{email}` reaches 5 within a 15-minute window, set `failed_auth_attempts.locked_until = now() + 30min` for the row keyed by email and SET `account-lock:{email}` in Redis with 30-min TTL
     - On subsequent auth attempts for that email (regardless of source IP), reject with `423 Locked` and JSON body `{"error":"ACCOUNT_LOCKED","unlockEmailSent":true,"lockUntil":"..."}`
     - On account lockout, publish a `NOTIFICATION_REQUESTED` event to the existing `notification-events` Kafka topic with template `ACCOUNT_LOCKED_UNLOCK_LINK` and a one-time unlock token (UUID stored in Redis `unlock-token:{token}` with 30-min TTL and value=email)
     - _Requirements: 5.5_
-  - [ ] 18.3 Implement unlock endpoint
+  - [x] 18.3 Implement unlock endpoint
     - Create `gr.courtbooking.platform.auth.adapter.in.web.AccountUnlockController` exposing `GET /api/auth/unlock/{token}`. On valid token: clear both `failed-auth:ip:{ip}` and `failed-auth:email:{email}` counters, set `failed_auth_attempts.locked_until = NULL`, delete `account-lock:{email}` and `unlock-token:{token}`, redirect the user to `${admin-web.base-url}/login?unlocked=true`
     - On invalid or expired token: return `400 Bad Request` body `{"error":"INVALID_UNLOCK_TOKEN"}`
     - _Requirements: 5.5_
-  - [ ] 18.4 Implement distributed brute-force detection
+  - [x] 18.4 Implement distributed brute-force detection
     - Create `gr.courtbooking.platform.auth.security.DistributedAttackDetector` invoked on every failed-auth event
     - Track in Redis sorted set `distributed-attack:{ip}` the timestamps of failed attempts ANNOTATED with the target email. When ≥20 failed attempts span ≥3 distinct emails within a 5-minute window, publish CRITICAL SECURITY_ALERT (alertType=BRUTE_FORCE) and add the IP to the blocklist with 24-hour TTL via `IpBlocklistAdminPort` (the same port used by the admin REST API in Task 22)
     - Record the auto-block in the `security_audit_trail` table with `action='AUTO_BLOCK_IP'` and a reference to the originating alert ID (Req 23.2)
@@ -340,16 +340,16 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - **Property 14** — for any IP with ≥20 failed attempts spanning ≥3 distinct accounts within a 5-min window, IP is blocklisted within 1 second of threshold breach
     - **Property 15** — for any email with 5 failed attempts in a 15-min window, all subsequent attempts for that email return 423 for 30 minutes
     - **Validates: Requirements 5.1, 5.5**
-  - [ ] 18.6 Write integration tests for unlock flow
+  - [x] 18.6 Write integration tests for unlock flow
     - Test happy path (lockout → email sent → unlock token → redirect → counters cleared), invalid token, expired token, double-use protection
     - _Requirements: 5.5_
 
-- [ ] 19. Platform Service — Suspicious login detection and challenge
-  - [ ] 19.1 Create `GeoIpLookupAdapter`
+- [x] 19. Platform Service — Suspicious login detection and challenge
+  - [x] 19.1 Create `GeoIpLookupAdapter`
     - In `court-booking-platform-service/src/main/java/gr/courtbooking/platform/auth/security/geoip/`, create `GeoIpLookupPort` with `Optional<String> getCountryCode(String ipAddress)` and `GeoIpLookupAdapter` backed by MaxMind GeoLite2 city database (file packaged in resources or mounted via Kubernetes ConfigMap)
     - On lookup failure or service unavailability, return `Optional.empty()` and emit metric `geoip_lookup_failed_total`. Per Req 5.4, the caller treats unknown country as "skip country check"
     - _Requirements: 5.4_
-  - [ ] 19.2 Implement `SuspiciousLoginDetectionService`
+  - [x] 19.2 Implement `SuspiciousLoginDetectionService`
     - Create `gr.courtbooking.platform.auth.security.SuspiciousLoginDetectionService` invoked AFTER successful credential validation but BEFORE issuing the access token
     - Read the user's last 90 days of login history (`user_login_history` table or audit logs — use whichever Phase 2 already has) and check three novelty conditions:
       - Device: User-Agent string never seen before for this account
@@ -358,7 +358,7 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - When ALL THREE are simultaneously novel: publish LOW SECURITY_ALERT (alertType=SUSPICIOUS_LOGIN), generate a one-time challenge token (UUID stored in Redis `login-challenge:{token}` with 15-min TTL and value containing the userId, IP, deviceId), send a `NOTIFICATION_REQUESTED` event to `notification-events` with template `SUSPICIOUS_LOGIN_CONFIRM` containing the challenge link, and return `{"challengeRequired":true}` to the client without issuing tokens
     - If the GeoIP lookup returned empty (per Req 5.4), skip the country check and proceed with device+IP checks only
     - _Requirements: 5.2, 5.3, 5.4_
-  - [ ] 19.3 Implement login confirmation endpoint
+  - [x] 19.3 Implement login confirmation endpoint
     - Create `gr.courtbooking.platform.auth.adapter.in.web.LoginConfirmController` exposing `GET /api/auth/confirm-login/{token}`. On valid unexpired token: issue the access+refresh token pair as if the original login had succeeded, record the new device/IP/country in `user_login_history`, delete the challenge token, redirect to `${admin-web.base-url}/dashboard?loginConfirmed=true`
     - On expired or unknown token: return `400 Bad Request` body `{"error":"CHALLENGE_EXPIRED"}` and require re-authentication
     - _Requirements: 5.2, 5.3_
@@ -366,41 +366,41 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - **Property 16** — for any successful authentication from a simultaneously new device, new IP, and new country, login is always withheld and confirmation email is sent
     - **Property 17** — for any challenge token not confirmed within 15 minutes, token is invalid and session is never established
     - **Validates: Requirements 5.2, 5.3**
-  - [ ] 19.5 Write unit tests for SuspiciousLoginDetectionService
+  - [x] 19.5 Write unit tests for SuspiciousLoginDetectionService
     - Test each combination of novel/known device/IP/country, country-skip when GeoIP unavailable, token expiry, double-use protection
     - _Requirements: 5.2, 5.3, 5.4_
 
-- [ ] 20. Checkpoint — Ensure Platform Service auth and detection logic pass tests
+- [x] 20. Checkpoint — Ensure Platform Service auth and detection logic pass tests
   - Ensure all tests pass (run `./gradlew :court-booking-platform-service:allTests`), ask the user if questions arise.
 
-- [ ] 21. Platform Service — `SecurityEventKafkaConsumer` and STOMP push
-  - [ ] 21.1 Create `SecurityEventKafkaConsumer` with idempotent persistence
+- [x] 21. Platform Service — `SecurityEventKafkaConsumer` and STOMP push
+  - [x] 21.1 Create `SecurityEventKafkaConsumer` with idempotent persistence
     - In `court-booking-platform-service/src/main/java/gr/courtbooking/platform/security/event/`, create `SecurityEventKafkaConsumer` listening to the `security-events` topic (consumer group `platform-security-consumer`). Deserialize each `SecurityAlertEvent`
     - Idempotent persist: check `security_alerts` for an existing row keyed by `eventId` (deduplication key from Task 1.5); if absent, INSERT with status='OPEN', alertType, severity, userId, ipAddress, description, metadata (JSONB), createdAt
     - On Kafka deserialization failure, log at ERROR level and skip the message (do not stop the consumer). Emit metric `security_event_consumer_invalid_total`
     - _Requirements: 2.3, 2.4, 2.7_
-  - [ ] 21.2 Push HIGH and CRITICAL alerts to Transaction Service via Redis Pub/Sub for STOMP fan-out
+  - [x] 21.2 Push HIGH and CRITICAL alerts to Transaction Service via Redis Pub/Sub for STOMP fan-out
     - On every persisted alert with severity HIGH or CRITICAL, publish a message to Redis channel `security-alert-push` with `{alertId, alertType, severity, userId, ipAddress, summary, createdAt}`
     - In Transaction Service, create `SecurityAlertPubSubBridge` (Spring `@Component`) subscribing to the `security-alert-push` Redis channel via `RedisMessageListenerContainer`. On message receipt, look up active PLATFORM_ADMIN and SUPPORT_AGENT WebSocket sessions via the Phase 5 session registry and broadcast a `SECURITY_ALERT_PUSH` STOMP message to `/user/queue/security-alerts`
     - Update `docs/api/websocket-message-contracts.json` to register `/user/queue/security-alerts` (allowedRoles: PLATFORM_ADMIN, SUPPORT_AGENT) and the `SECURITY_ALERT_PUSH` server-to-client message schema
     - _Requirements: 2.4, 24.4_
-  - [ ] 21.3 Trigger AutoResponseService dispatch
+  - [x] 21.3 Trigger AutoResponseService dispatch
     - After persisting the alert, invoke `AutoResponseService.evaluateAndDispatch(alertId)` (Task 22) on a separate thread/transaction so consumer throughput is not blocked
     - _Requirements: 23.1, 25.1_
   - [ ]* 21.4 Write property test for **Property 30: Auto-Response Idempotency (consumer half — eventId deduplication)**
     - **Property 30 (consumer half)** — for any duplicate `SECURITY_ALERT` event delivered to the Kafka consumer (same eventId), the resulting `security_alerts` row count is always exactly 1, regardless of redelivery count
     - This is the consumer-side complement to Task 22.4's action-side idempotency test
     - **Validates: Requirement 2.7, 2.3 (consumer idempotency)**
-  - [ ] 21.5 Write integration test for end-to-end alert flow
+  - [x] 21.5 Write integration test for end-to-end alert flow
     - Publish a CRITICAL alert via the test KafkaTemplate, assert the row appears in `security_alerts`, assert the STOMP message is received by a connected admin client, assert AutoResponseService is invoked
     - _Requirements: 2.3, 2.4, 2.7, 24.4_
 
-- [ ] 22. Platform Service — `AutoResponseService` and persistence
-  - [ ] 22.1 Create `AutoResponseConfigPort` and Redis-cached repository
+- [x] 22. Platform Service — `AutoResponseService` and persistence
+  - [x] 22.1 Create `AutoResponseConfigPort` and Redis-cached repository
     - In `court-booking-platform-service/src/main/java/gr/courtbooking/platform/security/autoresponse/`, create `AutoResponseConfigPort` (`Optional<AutoResponseConfig> getByAlertType(AlertType)`, `void update(AlertType, ResponseMode, UUID actorId)`) and `AutoResponseConfigPersistenceAdapter` reading/writing the `security_auto_response_config` table from Task 1.1
     - Cache reads in Redis under `auto-response-config:{alertType}` with 60-second TTL refreshed on every read; on update, invalidate the cache key immediately so subsequent reads pick up the new mode
     - _Requirements: 25.1, 25.2, 25.3_
-  - [ ] 22.2 Implement `AutoResponseService` action dispatch with idempotency
+  - [x] 22.2 Implement `AutoResponseService` action dispatch with idempotency
     - Create `AutoResponseService` with method `evaluateAndDispatch(alertId)`. Read the alert and its alertType, then read the config via `AutoResponseConfigPort`
     - When mode=AUTOMATIC: dispatch the action defined per alertType (Req 23 AC 1, AC 2):
       - For ANY HIGH or CRITICAL alert with a `userId` — invoke `UserRestrictionService.restrictToReadOnly(userId, alertId)` which sets `users.restriction_status='READ_ONLY'`, `restriction_reason`, `restriction_alert_id`, and `restricted_at` within 5 seconds of alert creation. Existing JWT sessions remain valid but every state-changing endpoint enforces the read-only flag (rejects POST/PUT/DELETE on `/api/bookings*`, `/api/payments*` with 403 `{"error":"ACCOUNT_RESTRICTED","alertId":"<id>"}` until a PLATFORM_ADMIN resolves the alert)
@@ -414,25 +414,25 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - Per Req 23.4, after every successful action dispatch, publish a follow-up SECURITY_ALERT (severity=LOW, alertType matching the original) with metadata `{"action":"<actionType>","targetUserId":"...","targetIp":"...","originalAlertId":"..."}`. On any action failure, publish MEDIUM AUTO_RESPONSE_FAILED alert referencing the original
     - _Requirements: 23.1, 23.2, 23.3, 23.4, 25.5_
 
-  - [ ] 22.2.1 Implement `UserRestrictionService` and `RestrictedUserFilter`
+  - [x] 22.2.1 Implement `UserRestrictionService` and `RestrictedUserFilter`
     - Create `UserRestrictionService.restrictToReadOnly(userId, alertId)` and `clearRestriction(userId, alertId)` that update `users.restriction_status`, `restriction_reason`, `restriction_alert_id`, `restricted_at` within a single transaction
     - On AlertStatusTransitionService transition to RESOLVED or FALSE_POSITIVE for any alert with `restriction_alert_id = id`, automatically call `clearRestriction(userId, alertId)` so the user regains write access
     - Create `RestrictedUserFilter` (Spring `OncePerRequestFilter`) inserted AFTER `JwtAuthenticationFilter` in BOTH services. For state-changing methods (POST/PUT/DELETE/PATCH) on `/api/**` paths, look up `users.restriction_status` (cached in Redis under `user-restriction:{userId}` with 60s TTL invalidated on transition); if READ_ONLY, reject with `403 Forbidden` body `{"error":"ACCOUNT_RESTRICTED","alertId":"<id>","reason":"<reason>"}`
     - Cross-schema enforcement in Transaction Service: read `users.restriction_status` via the existing cross-schema view, with Redis-first fallback to direct query
     - _Requirements: 23.1_
-  - [ ] 22.3 Add UNIQUE constraint to `security_audit_trail` for idempotency
+  - [x] 22.3 Add UNIQUE constraint to `security_audit_trail` for idempotency
     - Append to `V7__phase7_security_schema.sql` (or write a new migration `V7.1__auto_response_idempotency.sql`): `CREATE UNIQUE INDEX uniq_audit_auto_response ON security_audit_trail(related_alert_id) WHERE action = 'AUTO_RESPONSE_DISPATCHED'`
     - Update the rollback script accordingly
     - _Requirements: 23.4_
   - [ ]* 22.4 Write property test for **Property 30: Auto-Response Idempotency**
     - **Property 30** — for any sequence of repeated `evaluateAndDispatch(alertId)` calls (e.g., due to consumer retries), the action is executed at most once per alert and no duplicate audit-trail entry is created
     - **Validates: Requirement 2.3 (consumer idempotency), 23.4**
-  - [ ] 22.5 Write unit tests for AutoResponseService
+  - [x] 22.5 Write unit tests for AutoResponseService
     - Test each alertType→action mapping, mode=AUTOMATIC vs MANUAL_REVIEW vs DISABLED, idempotency on duplicate calls, follow-up alert on action failure
     - _Requirements: 23.1–23.4, 25.1, 25.5_
 
-- [ ] 23. Platform Service — `SecurityAlert` domain, status machine, and audit-trail adapter
-  - [ ] 23.1 Create `SecurityAlert` domain entity and status state machine
+- [x] 23. Platform Service — `SecurityAlert` domain, status machine, and audit-trail adapter
+  - [x] 23.1 Create `SecurityAlert` domain entity and status state machine
     - In `court-booking-platform-service/src/main/java/gr/courtbooking/platform/security/domain/`, create `SecurityAlert` aggregate with fields `id`, `alertType`, `severity`, `userId`, `ipAddress`, `description`, `metadata`, `status` (enum: OPEN, ACKNOWLEDGED, INVESTIGATING, RESOLVED, FALSE_POSITIVE — matching the existing Phase 1b CHECK constraint), `assignedTo` (nullable userId), `acknowledgedAt`, `acknowledgedBy`, `resolvedAt`, `resolvedBy`, `resolutionNotes`, `createdAt`
     - Implement `transitionTo(SecurityAlertStatus newStatus, UUID actorId, String notes)` enforcing the legal transitions per Req 2.6:
       - OPEN → ACKNOWLEDGED (no body required, sets acknowledgedAt + acknowledgedBy)
@@ -444,29 +444,29 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
       - All transitions out of RESOLVED or FALSE_POSITIVE throw `InvalidAlertTransitionException` mapped to HTTP 409 Conflict
     - On first transition out of OPEN set `acknowledged_by` and `acknowledged_at`; on transition to RESOLVED or FALSE_POSITIVE set `resolved_by` and `resolved_at`
     - _Requirements: 2.5, 2.6, 24.3_
-  - [ ] 23.2 Create `AlertStatusTransitionService` and audit-trail adapter
+  - [x] 23.2 Create `AlertStatusTransitionService` and audit-trail adapter
     - In `court-booking-platform-service/src/main/java/gr/courtbooking/platform/security/application/`, create `AlertStatusTransitionService.transition(UUID alertId, SecurityAlertStatus newStatus, UUID actorId, String notes)`
     - Within a single transaction: load alert, call `alert.transitionTo()`, persist, INSERT into `security_audit_trail` with `actor_user_id=actorId`, `action='ALERT_STATUS_TRANSITION'`, `related_alert_id=alertId`, `metadata={"from":"<old>","to":"<new>","notes":"<notes>"}`
     - On RESOLVED transitions for PAYMENT_FRAUD alerts where `users.stripe_connect_status='UNDER_REVIEW'`, also publish the `STRIPE_STATUS_RESET` Kafka command (Task 9.2)
     - On RESOLVED transitions for alerts that triggered a payout HOLD (Tasks 10, 11), publish the `RELEASE_PAYOUT_HOLD` Kafka command (Task 10.2)
     - _Requirements: 2.5, 2.6, 23.4, 24.3_
-  - [ ] 23.3 Create `SecurityAlertQueryService` for filtering and pagination
+  - [x] 23.3 Create `SecurityAlertQueryService` for filtering and pagination
     - Create `SecurityAlertQueryService` exposing query methods: by status, by severity, by alertType, by userId, by ipAddress, by date range; combined with pagination (page/size) and sorting (createdAt DESC default)
     - Optimize hot paths with composite indexes added in `V7__phase7_security_schema.sql`: `(status, severity, created_at DESC)`, `(alert_type, created_at DESC)`, `(user_id, created_at DESC)`, `(ip_address, created_at DESC)`
     - _Requirements: 24.1, 24.2_
-  - [ ] 23.4 Write append-only audit-trail adapter and verify schema permissions
+  - [x] 23.4 Write append-only audit-trail adapter and verify schema permissions
     - Create `SecurityAuditTrailPort` and `SecurityAuditTrailPersistenceAdapter` exposing only `record(SecurityAuditEntry)` (INSERT-only) and `findByAlertId/findByActor/findByTarget` (SELECT-only). Do NOT expose update/delete methods
     - Add a Spring boot-time check that asserts the runtime `platform_service_role` lacks UPDATE and DELETE on `security_audit_trail` (run a `SELECT has_table_privilege('platform_service_role','security_audit_trail','UPDATE')` and fail startup if it returns true)
     - _Requirements: 23.4, 24.5_
   - [ ]* 23.5 Write property test for **Property 7: Alert Status Machine Integrity**
     - **Property 7** — for any sequence of status transitions on a SecurityAlert, the final status is reachable from the initial status via the defined transition graph, and no transition out of RESOLVED or FALSE_POSITIVE is ever accepted (returns 409 Conflict)
     - **Validates: Requirement 2.6**
-  - [ ] 23.6 Write unit tests for SecurityAlert and AlertStatusTransitionService
+  - [x] 23.6 Write unit tests for SecurityAlert and AlertStatusTransitionService
     - Test each legal transition, illegal transitions throw, audit trail row created on every transition, RESOLVED triggers Kafka commands for UNDER_REVIEW reset and payout hold release
     - _Requirements: 2.5, 2.6, 24.3_
 
-- [ ] 24. Platform Service — REST APIs for security operations
-  - [ ] 24.1 Create `SecurityAlertController`
+- [x] 24. Platform Service — REST APIs for security operations
+  - [x] 24.1 Create `SecurityAlertController`
     - In `court-booking-platform-service/src/main/java/gr/courtbooking/platform/security/adapter/in/web/`, create `SecurityAlertController` exposing:
       - `GET /api/admin/security/alerts` — query with filters (status, severity, alertType, userId, ipAddress, dateFrom, dateTo, page, size); PLATFORM_ADMIN full access; SUPPORT_AGENT read-only access
       - `GET /api/admin/security/alerts/{id}` — alert detail
@@ -475,7 +475,7 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
       - `POST /api/admin/security/alerts/{id}/resolve` (PLATFORM_ADMIN only) — body `{"notes":"...","status":"RESOLVED|FALSE_POSITIVE"}`
     - All write endpoints require CSRF token (existing Phase 6a `CsrfValidationFilter`) and persist an audit-trail entry
     - _Requirements: 24.1, 24.2, 24.3, 28.5_
-  - [ ] 24.2 Create `IpBlocklistController`
+  - [x] 24.2 Create `IpBlocklistController`
     - In the same package, create `IpBlocklistController` exposing:
       - `GET /api/admin/security/ip-blocklist` (PLATFORM_ADMIN, SUPPORT_AGENT read-only) — paginated list of blocked IPs/CIDRs with metadata (reason, addedBy, addedAt, expiresAt)
       - `POST /api/admin/security/ip-blocklist` (PLATFORM_ADMIN only) — body `{"ipOrCidr":"...","reason":"...","ttlHours":<n>}`
@@ -483,143 +483,143 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - Validate IPv4 format (reject IPv6 per Req 7.6) and CIDR `/8`–`/32` ranges; reject loopback/private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`) with `400 Bad Request`
     - Persist all changes via `IpBlocklistAdminService` (Task 25); record audit-trail with `action='ADD_IP_TO_BLOCKLIST'` or `'REMOVE_IP_FROM_BLOCKLIST'`
     - _Requirements: 7.1, 7.2, 7.3, 7.6, 24.5, 28.5_
-  - [ ] 24.3 Create `AutoResponseConfigController`
+  - [x] 24.3 Create `AutoResponseConfigController`
     - Create `AutoResponseConfigController` exposing:
       - `GET /api/admin/security/auto-response-config` (PLATFORM_ADMIN only) — list of all alertType→responseMode mappings
       - `PUT /api/admin/security/auto-response-config/{alertType}` (PLATFORM_ADMIN only) — body `{"responseMode":"AUTOMATIC|MANUAL_REVIEW|DISABLED"}`
     - On every update, write to `security_audit_trail` with `action='AUTO_RESPONSE_CONFIG_CHANGED'`, metadata `{"alertType":"...","from":"...","to":"..."}`
     - Update `docs/api/openapi-platform-service.yaml` with these endpoint specs as part of this task
     - _Requirements: 25.1, 25.2, 25.3, 25.4, 28.5_
-  - [ ] 24.4 Create `SuspiciousLoginController` and `AccountUnlockController` registration
+  - [x] 24.4 Create `SuspiciousLoginController` and `AccountUnlockController` registration
     - Register the controllers from Tasks 18.3 and 19.3 in the Spring web context, ensuring they bypass the JWT filter (since these are token-via-link endpoints)
     - Add OpenAPI spec entries for `GET /api/auth/unlock/{token}` and `GET /api/auth/confirm-login/{token}` in `docs/api/openapi-platform-service.yaml`
     - _Requirements: 5.3, 5.5_
-  - [ ] 24.5 Write integration tests for security REST APIs
+  - [x] 24.5 Write integration tests for security REST APIs
     - Test all endpoints with PLATFORM_ADMIN (success), SUPPORT_AGENT (read=200, write=403), CUSTOMER (all=403), unauthenticated (all=401)
     - Test alert state transitions via API, IP blocklist add/remove with audit-trail verification, auto-response config updates with audit-trail verification
     - _Requirements: 24.1–24.5, 25.1–25.5, 7.1–7.6, 28.5_
 
-- [ ] 25. Platform Service — IP blocklist service and Redis adapter
-  - [ ] 25.1 Create `IpBlocklistAdminService` and Redis adapter
+- [x] 25. Platform Service — IP blocklist service and Redis adapter
+  - [x] 25.1 Create `IpBlocklistAdminService` and Redis adapter
     - In `court-booking-platform-service/src/main/java/gr/courtbooking/platform/security/blocklist/`, create `IpBlocklistAdminPort` (`add`, `remove`, `list`, `isBlocked`) and `IpBlocklistRedisAdapter` writing to Redis SET `ip:blocklist` (exact IPs) and sorted set `ip:blocklist:cidr` (CIDR ranges with score = expiry epoch-seconds)
     - Use the EXISTING `platform.ip_blocklist` table (created in V1 migration with columns: id, ip_address, cidr_range, reason, blocked_by, related_alert_id, expires_at, created_at). The `reason` column is extended to VARCHAR(500) by Task 1.1. Do NOT create a new table — wire the persistence adapter to the existing schema
     - On every add/remove via the admin API or auto-response, write Redis AND PostgreSQL atomically (Spring `@Transactional` boundary plus a Redis pipeline; if Redis write fails after DB commit, schedule a reconciliation job)
     - _Requirements: 7.1, 7.2_
-  - [ ] 25.2 Wire blocklist enforcement into existing Phase 2 `RateLimitFilter`
+  - [x] 25.2 Wire blocklist enforcement into existing Phase 2 `RateLimitFilter`
     - Extend the existing `court-booking-platform-service` `RateLimitFilter` (or add a new `IpBlocklistFilter` ordered BEFORE it) to call `IpBlocklistAdminPort.isBlocked(ipAddress)` (which checks Redis SET and CIDR sorted set). On match, reject with `403 Forbidden` body `{"error":"IP_BLOCKED"}`
     - Implement the same LRU fallback (Caffeine, 1000 entries, 60s TTL) and fail-closed behavior described in Task 5.1; this is symmetric across both services
     - _Requirements: 7.4, 7.5_
-  - [ ] 25.3 Create `IpBlocklistReconciliationJob`
+  - [x] 25.3 Create `IpBlocklistReconciliationJob`
     - Create a Quartz job scheduled every 5 minutes that compares the contents of `ip_blocklist` table with Redis SET/sorted-set state, and fixes drift (re-adds missing Redis entries, removes Redis entries with `expires_at < NOW()`)
     - _Requirements: 7.2_
-  - [ ] 25.4 Write unit and integration tests for IP blocklist
+  - [x] 25.4 Write unit and integration tests for IP blocklist
     - Test exact-IP block, CIDR block (`/8`, `/16`, `/24`, `/32`), TTL expiration, fail-closed on Redis outage, reconciliation job behavior, IPv6 rejection
     - _Requirements: 7.1–7.6_
 
-- [ ] 26. Checkpoint — Ensure security alert pipeline and admin APIs pass tests
+- [x] 26. Checkpoint — Ensure security alert pipeline and admin APIs pass tests
   - Ensure all tests pass (run `./gradlew :court-booking-platform-service:allTests`), ask the user if questions arise.
 
-- [ ] 27. Platform Service — Stripe Connect security monitoring
-  - [ ] 27.1 Detect deauthorize→reauthorize-with-different-IBAN takeover signal
+- [x] 27. Platform Service — Stripe Connect security monitoring
+  - [x] 27.1 Detect deauthorize→reauthorize-with-different-IBAN takeover signal
     - Extend the existing Phase 4 Stripe Connect webhook handler (`account.deauthorized`, `account.application.deauthorized`, `account.updated`) to track the IBAN hash. On every reauthorize where `bankAccount.iban_hash != users.previous_stripe_iban_hash` AND the deauthorize event is within the last 7 days, publish CRITICAL SECURITY_ALERT (alertType=ACCOUNT_TAKEOVER) and trigger AutoResponseService for ACCOUNT_TAKEOVER (which invalidates sessions and requires password reset)
     - Update `users.previous_stripe_iban_hash` on every successful reauthorize so future detections compare against the latest known IBAN
     - _Requirements: 19.1, 19.5_
-  - [ ] 27.2 Detect Stripe Connect charges/payouts disabled and transition to RESTRICTED
+  - [x] 27.2 Detect Stripe Connect charges/payouts disabled and transition to RESTRICTED
     - On `account.updated` webhooks where `chargesEnabled=false` OR `payoutsEnabled=false`, set `users.stripe_connect_status='RESTRICTED'`, set `users.restriction_status='READ_ONLY'`, set `users.restriction_reason='STRIPE_CHARGES_DISABLED'`, set `restricted_at=NOW()`
     - Hide all courts owned by this user from public search and booking creation by setting `courts.is_visible=false` for those court rows (or by applying a runtime filter via the existing `CourtSearchService`)
     - Publish HIGH SECURITY_ALERT (alertType=PAYMENT_FRAUD) so admins are notified
     - When Stripe re-enables (`chargesEnabled=true AND payoutsEnabled=true`), automatically transition status back to ACTIVE, clear restriction fields, and re-show courts (preserving any admin-set `is_visible=false`)
     - _Requirements: 19.2, 19.3, 19.4_
-  - [ ] 27.3 Write integration tests for Stripe Connect security monitoring
+  - [x] 27.3 Write integration tests for Stripe Connect security monitoring
     - Test deauthorize→IBAN-change reauthorize triggers ACCOUNT_TAKEOVER alert + auto-response, charges-disabled triggers RESTRICTED + court hiding, re-enable transitions back to ACTIVE
     - _Requirements: 19.1–19.5_
 
-- [ ] 28. Platform Service — Data retention and anonymization jobs
-  - [ ] 28.1 Create `UserAnonymizationJob` (weekly Sun 03:00 UTC)
+- [x] 28. Platform Service — Data retention and anonymization jobs
+  - [x] 28.1 Create `UserAnonymizationJob` (weekly Sun 03:00 UTC)
     - In `court-booking-platform-service/src/main/java/gr/courtbooking/platform/scheduled/`, create `UserAnonymizationJob` (Quartz). For every user with `account_status='DELETED'` AND `deleted_at < now() - interval '30 days'` (per Req 17.1), replace `name` and `email` with `'Anonymized User'` / `anonymized-{id}@deleted.local`, clear `phone`, remove `profile_image_url`. Per-user anonymization SHALL cascade to dependent rows: UPDATE `oauth_providers` to clear `external_email`, UPDATE `refresh_tokens` to clear, UPDATE `support_tickets.metadata` to redact identifying fields
     - Process up to **10,000 records per execution** (per Req 17.1 cap; cascading cost is the rationale for keeping it conservative). Emit `security_audit_trail` row with `action='USER_ANONYMIZED'`, `target_user_id=<id>`, metadata `{"deletedAt":"...","cascadedRows":<n>}`
     - On failure mid-batch: roll back the current batch via `@Transactional` boundary, log the count of successfully processed rows before failure, retry on next scheduled run (Req 17.6)
     - _Requirements: 17.1, 17.5, 17.6_
-  - [ ] 28.2 Create `AuditLogArchivalJob` (monthly 1st 04:00 UTC)
+  - [x] 28.2 Create `AuditLogArchivalJob` (monthly 1st 04:00 UTC)
     - Create `AuditLogArchivalJob` that archives audit log rows older than **2 years** (per Req 17.2 — covers BOTH `court_owner_audit_logs` and `support_messages` audit content) to Digital Ocean Spaces via `ColdStorageSpacesAdapter` (gzip-compressed JSON Lines files, one file per month per source table). Process up to 10,000 records per execution
     - After successful upload, verify the archive SHA-256 checksum against the locally computed checksum before DELETE. If checksum mismatch, abort and publish CRITICAL SECURITY_ALERT (alertType=DATA_RETENTION_FAILURE)
     - On batch failure: roll back, log count processed, retry next month (Req 17.6). Emit summary `security_audit_trail` row with `action='AUDIT_LOG_ARCHIVED'`, metadata `{"recordsArchived":<n>,"archiveKey":"..."}`
     - _Requirements: 17.2, 17.5, 17.6_
-  - [ ] 28.3 Create `SecurityAlertArchivalJob` (monthly 1st 05:00 UTC)
+  - [x] 28.3 Create `SecurityAlertArchivalJob` (monthly 1st 05:00 UTC)
     - Create `SecurityAlertArchivalJob` that archives `security_alerts` rows with status IN ('RESOLVED','FALSE_POSITIVE') AND `resolvedAt < now() - interval '1 year'` (per Req 17.4) to Digital Ocean Spaces; preserve the corresponding `security_audit_trail` rows in place (audit trail is never archived per Req 23.4 append-only semantics). Process up to 10,000 records per execution
     - On batch failure: roll back, log count processed, retry next month
     - _Requirements: 17.4, 17.5, 17.6_
-  - [ ] 28.4 Create `ColdStorageSpacesAdapter`
+  - [x] 28.4 Create `ColdStorageSpacesAdapter`
     - In `court-booking-platform-service/src/main/java/gr/courtbooking/platform/security/adapter/out/spaces/`, create `ColdStorageSpacesAdapter` reusing the existing Phase 3 Spaces SDK configuration but writing to a separate bucket `${spaces.cold-storage-bucket}` with server-side encryption (AES-256 default for Spaces). Implement `archiveJsonlGzipped(String key, Stream<JsonNode>)` and `verifyChecksum(String key, byte[] expectedSha256)`
     - _Requirements: 17.2, 17.4, 26.5_
-  - [ ] 28.5 Write integration tests for retention jobs
+  - [x] 28.5 Write integration tests for retention jobs
     - Test PII replacement preserves operational fields, archive→checksum→delete flow, audit-trail entry creation, idempotency on re-run
     - _Requirements: 17.1, 17.2, 17.4_
 
-- [ ] 29. Platform Service — Secret rotation hooks and audit
-  - [ ] 29.1 Implement JWT signing-key rotation tooling
+- [x] 29. Platform Service — Secret rotation hooks and audit
+  - [x] 29.1 Implement JWT signing-key rotation tooling
     - Update the existing Phase 2 `JwksController` and key store to support multiple active keys: a current active key (used for signing) and up to 5 retired keys (used for validation only). Retired keys are removed from the JWK Set 15 minutes after retirement (matching the Transaction Service's grace period in Task 4.3)
     - Create `gr.courtbooking.platform.auth.security.JwtKeyRotationService.rotate()` that generates a new RSA-2048 key pair, marks the previous current as retired with `retiredAt=NOW()`, persists to the JWK Set storage, and emits a `security_audit_trail` row with `action='JWT_KEY_ROTATED'`
     - Schedule rotation every 90 days via Quartz `JwtKeyRotationJob`; expose a manual `POST /api/admin/security/rotate-jwt-keys` for emergency rotation (PLATFORM_ADMIN only)
     - _Requirements: 18.1_
-  - [ ] 29.2 Implement DB credential rotation hook
+  - [x] 29.2 Implement DB credential rotation hook
     - Create `DatabaseCredentialRotationJob` (Quartz, 90-day cadence) that fetches a new password from External Secrets Operator (`secrets/database/postgres-rotation`), updates the in-cluster Kubernetes Secret, and triggers a rolling restart annotation on the platform-service Deployment via Kubernetes Java client
     - Record `security_audit_trail` row with `action='DB_CREDENTIAL_ROTATED'`
     - _Requirements: 18.2_
-  - [ ] 29.3 Implement internal API credential rotation with overlap
+  - [x] 29.3 Implement internal API credential rotation with overlap
     - Create `InternalApiCredentialRotationJob` (Quartz, 30-day cadence). Generate a new credential, write to External Secrets, push to consuming services via Kafka command `INTERNAL_API_CREDENTIAL_ROTATED`. Preserve the old credential as valid for a 5-minute overlap window (validate against both old and new during the window), then remove
     - Record audit-trail entries on rotation and overlap-window expiry
     - _Requirements: 18.3_
-  - [ ] 29.4 Implement Stripe webhook secret rotation
+  - [x] 29.4 Implement Stripe webhook secret rotation
     - Create `StripeWebhookSecretRotationJob` (Quartz, annual cadence). On rotation, validate incoming webhooks against BOTH old and new secrets for a 60-minute overlap, then drop the old secret
     - Update the existing Phase 4 `StripeWebhookController` to validate against the active secrets list (currently single-secret; extend to support 2 simultaneously during overlap)
     - Record audit-trail entries
     - _Requirements: 18.4_
-  - [ ] 29.5 Write unit tests for rotation jobs
+  - [x] 29.5 Write unit tests for rotation jobs
     - Test multi-key JWT validation during overlap, rotation timing, audit-trail entry creation, manual emergency-rotation endpoint
     - _Requirements: 18.1–18.5_
 
-- [ ] 30. Platform Service — Input validation hardening
-  - [ ] 30.1 Add Bean Validation and OWASP HTML Sanitizer to all REST request DTOs
+- [x] 30. Platform Service — Input validation hardening
+  - [x] 30.1 Add Bean Validation and OWASP HTML Sanitizer to all REST request DTOs
     - Audit all `@RestController` request bodies in BOTH services. For every String field accepting free-text input, add `@Size(max=N)` (per Req 22.1: default cap 5000 chars unless a field-specific limit is defined; sensible field-specific limits: name=255, court description=2000, support message=2000, notes=500, resolutionNotes=2000)
     - For numeric fields, validate against declared min/max range; for enums, validate membership; for dates require ISO-8601; for UUIDs require standard 8-4-4-4-12 hex format. On any violation, reject with `400 Bad Request` body `{"error":"VALIDATION_FAILED","field":"<name>","reason":"<rule>"}` (per Req 22.1)
     - Apply OWASP Java HTML Sanitizer with the explicit allowlist policy from Req 22.2: permit ONLY `<p>, <br>, <strong>, <em>, <ul>, <ol>, <li>` tags; strip ALL HTML attributes, JavaScript, and unrecognized tags. Apply to user-generated text fields (court descriptions, support messages) via a Spring `@ControllerAdvice` request body advice
     - Add the OWASP Java HTML Sanitizer dependency (`com.googlecode.owasp-java-html-sanitizer:owasp-java-html-sanitizer`) to BOTH `court-booking-platform-service/build.gradle.kts` and `court-booking-transaction-service/build.gradle.kts`
     - _Requirements: 22.1, 22.2_
-  - [ ] 30.2 Implement EXIF strip + image re-encode and PDF JS scan
+  - [x] 30.2 Implement EXIF strip + image re-encode and PDF JS scan
     - Per Req 22.3, REJECT all formats other than JPEG, PNG, WebP with `422 Unprocessable Entity` body `{"error":"INVALID_IMAGE","reason":"UNSUPPORTED_FORMAT"}`. Enforce 10MB max per file
     - Extend the existing Phase 3 `ManageCourtImagesService` and verification document upload paths to **fully re-encode** uploaded images via `javax.imageio.ImageIO` (read → write same format) — this strips EXIF metadata AND any embedded payloads (steganography, polyglot files). Reject images that fail re-encoding with `422 Unprocessable Entity` body `{"error":"INVALID_IMAGE","reason":"REENCODE_FAILED"}`
     - For PDF uploads (verification documents, support attachments), parse the PDF via Apache PDFBox and reject any document containing `/JavaScript`, `/JS`, `/AA`, `/OpenAction`, `/Launch`, `/EmbeddedFile`, or any active-content actions with `422 Unprocessable Entity` body `{"error":"INVALID_PDF","reason":"ACTIVE_CONTENT_DETECTED"}` (per Req 22.4)
     - _Requirements: 22.3, 22.4_
-  - [ ] 30.3 Strict Content-Type checking and request size limits
+  - [x] 30.3 Strict Content-Type checking and request size limits
     - Add `ContentTypeValidationFilter` to BOTH services' Spring filter chains. Reject requests where the declared `Content-Type` does not match the actual body type (validated via Apache Tika `Detector`) with `415 Unsupported Media Type` body `{"error":"CONTENT_TYPE_MISMATCH"}` (per Req 22.5)
     - Apply only to multipart and binary upload paths; skip for `application/json` and `application/x-www-form-urlencoded`
     - Per Req 22.6, NGINX-level request body size limits already enforced in Task 32.4: 10MB for `/api/courts/*/images` paths, 1MB for all other paths, returning `413 Payload Too Large` on excess
     - _Requirements: 22.5, 22.6_
-  - [ ] 30.4 Write unit tests for input validation hardening
+  - [x] 30.4 Write unit tests for input validation hardening
     - Test HTML sanitizer strips XSS payloads, EXIF removal preserves image bytes, PDF JS detection, Content-Type mismatch rejection
     - _Requirements: 22.1, 22.4, 22.5, 22.6, 27.1_
 
-- [ ] 31. OpenAPI / contract document updates
-  - [ ] 31.1 Update `docs/api/openapi-platform-service.yaml`
+- [x] 31. OpenAPI / contract document updates
+  - [x] 31.1 Update `docs/api/openapi-platform-service.yaml`
     - Add path entries and schemas for: `GET/POST /api/admin/security/alerts*`, `GET/POST/DELETE /api/admin/security/ip-blocklist*`, `GET/PUT /api/admin/security/auto-response-config*`, `GET /api/auth/unlock/{token}`, `GET /api/auth/confirm-login/{token}`, `POST /api/admin/security/rotate-jwt-keys`
     - Document required role for each endpoint via OpenAPI `security` field referencing the existing `BearerAuth` scheme; document CSRF requirement via `x-csrf-required: true` extension
     - _Requirements: 29.5_
-  - [ ] 31.2 Update `docs/api/websocket-message-contracts.json`
+  - [x] 31.2 Update `docs/api/websocket-message-contracts.json`
     - Add `/user/queue/security-alerts` destination with role-required `PLATFORM_ADMIN|SUPPORT_AGENT` and `SECURITY_ALERT_PUSH` message schema (alertId, alertType, severity, userId, ipAddress, summary, createdAt)
     - Add `TOKEN_EXPIRING` message schema on `/user/queue/system` (used by Task 14.3 token-refresh handler)
     - _Requirements: 29.5_
-  - [ ] 31.3 Update `docs/api/kafka-event-contracts.json`
+  - [x] 31.3 Update `docs/api/kafka-event-contracts.json`
     - Ensure the `SECURITY_ALERT` schema reflects all fields from Task 1.5 (alertType, severity, userId, ipAddress, description, metadata, timestamp, eventId)
     - Add command schemas: `STRIPE_STATUS_RESET`, `RELEASE_PAYOUT_HOLD`, `INTERNAL_API_CREDENTIAL_ROTATED`, `SET_STRIPE_STATUS`
     - _Requirements: 29.5_
 
-- [ ] 32. Infrastructure — NGINX Ingress configuration
-  - [ ] 32.1 Configure security headers
+- [x] 32. Infrastructure — NGINX Ingress configuration
+  - [x] 32.1 Configure security headers
     - In `court-booking-infrastructure/nginx/`, update or create the Ingress `nginx.conf` template to inject response headers on every response: `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(self)` (per Req 8.5 — note: `geolocation=(self)` allows the platform's own origin to use geolocation for map features)
     - Per Req 8.1 explicitly do NOT set `X-XSS-Protection` to allow the value `0` to be set by the Admin Web (Task 34.6)
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
-  - [ ] 32.2 Configure CORS allowlist with preflight (per Req 9)
+  - [x] 32.2 Configure CORS allowlist with preflight (per Req 9)
     - Configure `Access-Control-Allow-Origin` dynamically based on the `Origin` request header matching one of the allowlisted origins per Req 9.1: `https://admin.courtbooking.gr`, the mobile app web build domain, and `http://localhost:3000` for the `local` environment ONLY (no wildcard in staging or production per Req 9.4)
     - Restrict `Access-Control-Allow-Methods` to `GET, POST, PUT, DELETE, OPTIONS` (per Req 9.2)
     - Restrict `Access-Control-Allow-Headers` to `Authorization, Content-Type, Accept, Accept-Language, X-Idempotency-Key, X-Request-ID, X-CSRF-Token` (per Req 9.3)
@@ -627,60 +627,60 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - Set `Access-Control-Allow-Credentials: true` for allowlisted origins (per Req 9.7)
     - If `Origin` does not match any allowlisted origin, OMIT the `Access-Control-Allow-Origin` response header (do NOT echo or wildcard) so the browser blocks the response (per Req 9.5)
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7_
-  - [ ] 32.3 Configure Stripe webhook IP allowlist (defense-in-depth only)
+  - [x] 32.3 Configure Stripe webhook IP allowlist (defense-in-depth only)
     - For the `/api/webhooks/stripe` location, add an `allow` directive listing Stripe's published webhook source IPs and `deny all`. Read the IP list from a ConfigMap mounted as `/etc/nginx/stripe-webhook-ips.conf` and `include` it in the location block
     - Refresh procedure is **operational/quarterly + on-demand on Stripe security advisories** (per Req 11.3) — NOT daily. Document the runbook in `docs/runbooks/stripe-webhook-ip-refresh.md` and provide a Kubernetes Job manifest `stripe-webhook-ip-refresh-job.yaml` that operators can run on demand to fetch the latest list, regenerate the ConfigMap, and trigger an NGINX reload. Provision the matching ServiceAccount, Role (`configmaps: ['get','update']`), and RoleBinding in `court-booking-infrastructure/k8s/security/`
     - Per Req 11.3, IP allowlisting is treated as defense-in-depth only — primary protection is signature verification (Task 11.x) and timestamp tolerance (5-min window). If Stripe stops publishing IP ranges OR the operational team determines maintenance overhead outweighs the benefit, the allowlist SHALL be removable without weakening other controls (document this in the runbook)
     - _Requirements: 11.3, 7.6_
-  - [ ] 32.4 Configure TLS, body-size, and HTTP→HTTPS redirect
+  - [x] 32.4 Configure TLS, body-size, and HTTP→HTTPS redirect
     - Enforce TLS 1.2+ with ECDHE cipher suites only (`ssl_protocols TLSv1.2 TLSv1.3`, `ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305'`, `ssl_prefer_server_ciphers on`)
     - Set `client_max_body_size 1m` globally with an override `client_max_body_size 10m` for image and PDF upload paths
     - Add a server block listening on port 80 that returns `301 https://$host$request_uri` for all paths
     - _Requirements: 15.1, 15.2, 22.6_
-  - [ ] 32.5 Sync IP blocklist from Redis to NGINX `deny` rules
+  - [x] 32.5 Sync IP blocklist from Redis to NGINX `deny` rules
     - Create a Kubernetes CronJob `ip-blocklist-nginx-sync` running every minute that reads the `ip:blocklist` Redis SET and `ip:blocklist:cidr` sorted set, writes to a ConfigMap as NGINX `deny` directives, and reloads NGINX. This adds a perimeter layer on top of the application-level filter (Tasks 5 and 25.2)
     - _Requirements: 7.4, 8.6_
 
-- [ ] 33. Infrastructure — Service mesh, secrets, and encryption
-  - [ ] 33.1 Configure Istio PeerAuthentication STRICT mTLS
+- [x] 33. Infrastructure — Service mesh, secrets, and encryption
+  - [x] 33.1 Configure Istio PeerAuthentication STRICT mTLS
     - In `court-booking-infrastructure/istio/`, create a `PeerAuthentication` resource at the namespace level setting `mtls.mode: STRICT` for the `courtbooking` namespace and a `DestinationRule` enforcing `tls.mode: ISTIO_MUTUAL` for all in-mesh traffic between platform-service, transaction-service, and shared infrastructure (Redis, Postgres, Kafka)
     - _Requirements: 26.1_
-  - [ ] 33.2 Wire External Secrets Operator
+  - [x] 33.2 Wire External Secrets Operator
     - Create `ExternalSecret` resources in `court-booking-infrastructure/k8s/secrets/` for: `db-credentials`, `redis-credentials`, `kafka-credentials`, `stripe-api-key`, `stripe-webhook-secret`, `internal-api-key`, `jwt-signing-keys`. Each references the corresponding Vault path under `secret/courtbooking/{env}/`
     - Configure refresh intervals matching the rotation cadence (90d for DB/JWT, 30d for internal API, annual for Stripe)
     - _Requirements: 18.1–18.4, 26.2_
-  - [ ] 33.3 Verify encryption-at-rest in Terraform
+  - [x] 33.3 Verify encryption-at-rest in Terraform
     - In `court-booking-infrastructure/terraform/`, add explicit assertions in the PostgreSQL, Redis, Spaces, and backup resource definitions: `encryption.at_rest_enabled = true` for managed Postgres, `encryption.in_transit_required = true` for Redis (TLS only), Spaces buckets `default_encryption.algorithm = "AES256"`, backup snapshots `encryption_enabled = true`
     - Add a Terraform `precondition` or `check` block that fails the plan if any of these are false
     - For TLS certificate verification on managed services, set `sslmode=verify-full` in Postgres connection strings and `tls.insecureSkipVerify=false` for Redis clients in `application-prod.yml`
     - _Requirements: 15.3, 26.3, 26.4, 26.5_
-  - [ ] 33.4 Document the runbook for IP blocklist, secret rotation, GeoIP refresh
+  - [x] 33.4 Document the runbook for IP blocklist, secret rotation, GeoIP refresh
     - Create `docs/runbooks/ip-blocklist-management.md`, `docs/runbooks/secret-rotation.md`, `docs/runbooks/stripe-webhook-ip-refresh.md`, `docs/runbooks/geoip-refresh.md` covering routine operations, rollback procedures, and incident response
     - _Requirements: 7.6, 18.5, 11.3, 5.4_
 
-- [ ] 34. Admin Web — Security feature module
-  - [ ] 34.1 Create `securityService` API client and TanStack Query hooks
+- [x] 34. Admin Web — Security feature module
+  - [x] 34.1 Create `securityService` API client and TanStack Query hooks
     - In `court-booking-admin-web/src/services/`, create `securityService.ts` with methods: `listAlerts(filters)`, `getAlert(id)`, `getAlertSummary()`, `acknowledgeAlert(id, notes)`, `resolveAlert(id, status, notes)`, `listBlockedIps(page)`, `addBlockedIp(payload)`, `removeBlockedIp(ipOrCidr)`, `getAutoResponseConfig()`, `updateAutoResponseConfig(alertType, mode)`. Use the existing axios client and CSRF token interceptor from Phase 6b
     - Create TanStack Query hooks in `src/features/security/hooks/`: `useSecurityAlerts(filters)`, `useAlertSummary()`, `useBlockedIps(page)`, `useAutoResponseConfig()`, plus mutations `useAcknowledgeAlert`, `useResolveAlert`, `useAddBlockedIp`, `useRemoveBlockedIp`, `useUpdateAutoResponseConfig`. Configure 30-second stale time for queries, optimistic updates for mutations
     - _Requirements: 24.1, 24.2_
-  - [ ] 34.2 Create `useSecurityWebSocket` hook with token refresh
+  - [x] 34.2 Create `useSecurityWebSocket` hook with token refresh
     - In `court-booking-admin-web/src/features/security/hooks/`, create `useSecurityWebSocket.ts` that subscribes to `/user/queue/security-alerts` via the existing Phase 5 STOMP client. On `SECURITY_ALERT_PUSH`, invalidate the `useSecurityAlerts` and `useAlertSummary` query caches and display a toast notification
     - Handle the `TOKEN_EXPIRING` message by calling the existing auth service's `refreshAccessToken()` and emitting a STOMP message to `/app/token-refresh` with the new token
     - _Requirements: 24.4, 12.4–12.7_
-  - [ ] 34.3 Create `SecurityAlertsPage` and `SecurityAlertDetailPage`
+  - [x] 34.3 Create `SecurityAlertsPage` and `SecurityAlertDetailPage`
     - In `court-booking-admin-web/src/features/security/pages/`, create `SecurityAlertsPage.tsx` showing summary cards (open count, critical count, last 24h) plus a filterable/paginated table (by status, severity, alertType, date range)
     - Create `SecurityAlertDetailPage.tsx` showing alert details, metadata JSON viewer, audit-trail timeline, and acknowledge/resolve modals (PLATFORM_ADMIN only — hide buttons for SUPPORT_AGENT)
     - Components: `AlertSummaryCards`, `AlertSeverityBadge`, `AlertStatusTag`, `AcknowledgeAlertModal`, `ResolveAlertModal`. Place in `src/features/security/components/`
     - _Requirements: 24.1, 24.2, 24.3_
-  - [ ] 34.4 Create `IpBlocklistPage` and `AutoResponseConfigPage`
+  - [x] 34.4 Create `IpBlocklistPage` and `AutoResponseConfigPage`
     - Create `IpBlocklistPage.tsx` with paginated table + add modal (with client-side IPv4/CIDR validation matching backend rules from Task 24.2) + remove confirmation modal
     - Create `AutoResponseConfigPage.tsx` with a table of alertType→mode rows, each with a dropdown to change mode (AUTOMATIC, MANUAL_REVIEW, DISABLED). Confirm changes with a dialog showing diff
     - _Requirements: 7.1, 7.2, 25.1, 25.2_
-  - [ ] 34.5 Register routes and navigation
+  - [x] 34.5 Register routes and navigation
     - Update `court-booking-admin-web/src/router/`: add routes `/security/alerts`, `/security/alerts/:id`, `/security/ip-blocklist`, `/security/auto-response`. Wrap each in the existing `RequireRole` guard with allowed roles `[PLATFORM_ADMIN, SUPPORT_AGENT]` for read-only views and `[PLATFORM_ADMIN]` for write actions
     - Add a "Security" entry to the existing left navigation rendered only when the user has either role
     - _Requirements: 24.1, 28.5_
-  - [ ] 34.6 Configure CSP at build time and `X-XSS-Protection: 0` (per Req 8.6, 27.3)
+  - [x] 34.6 Configure CSP at build time and `X-XSS-Protection: 0` (per Req 8.6, 27.3)
     - In `court-booking-admin-web/vite.config.ts`, parameterize the build-time CSP via env vars `VITE_API_ORIGIN` and `VITE_WS_ORIGIN`. Inject the resulting `Content-Security-Policy` meta tag into `index.html` via a Vite plugin (or build-time HTML transform). The **production** policy SHALL resolve EXACTLY to (per Req 8.6):
       ```
       default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.digitaloceanspaces.com; connect-src 'self' https://api.courtbooking.gr wss://api.courtbooking.gr https://api.stripe.com; frame-src https://js.stripe.com; font-src 'self'
@@ -690,103 +690,103 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - The CSP SHALL NOT contain wildcards in `connect-src` or `script-src` in any environment — add a build-time assertion in `vite.config.ts` that fails the build if a wildcard is detected
     - Inject `<meta http-equiv="X-XSS-Protection" content="0">` to disable the legacy XSS auditor (per Req 27.3 — modern best practice)
     - _Requirements: 8.6, 27.3_
-  - [ ] 34.7 Write component and integration tests for Admin Web security UI
+  - [x] 34.7 Write component and integration tests for Admin Web security UI
     - Write Vitest + React Testing Library tests for: `SecurityAlertsPage` filter behavior, `SecurityAlertDetailPage` role-based button visibility, `IpBlocklistPage` IPv4/CIDR validation client-side errors, `AutoResponseConfigPage` mode change confirmation, `useSecurityWebSocket` push handling
     - _Requirements: 24.1–24.5, 25.1–25.5, 7.1–7.6, 28.5_
 
-- [ ] 35. Checkpoint — Ensure Admin Web and infrastructure config pass tests/lint
+- [x] 35. Checkpoint — Ensure Admin Web and infrastructure config pass tests/lint
   - Ensure all tests pass (run `cd court-booking-admin-web && npm test -- --run` and `npm run lint`), Terraform `plan` succeeds, and Kubernetes manifests pass `kubeval`. Ask the user if questions arise.
 
-- [ ] 36. Property-based and integration test suite (cross-cutting)
+- [x] 36. Property-based and integration test suite (cross-cutting)
   - [ ]* 36.1 Aggregate property-test classes covering all 30 correctness properties
     - Ensure every property listed in `design.md` has a corresponding `- [ ]*` PBT task above (Properties 1–28). For Property 29 (Encryption-At-Rest Verification) and Property 30 (TLS Cipher Suite Restriction), write integration tests in `court-booking-infrastructure/test/` that introspect the live Terraform state and the NGINX deployed config respectively
     - **Validates: All 30 correctness properties from design.md**
-  - [ ] 36.2 Write end-to-end integration test `Phase7SecurityIntegrationTest`
+  - [x] 36.2 Write end-to-end integration test `Phase7SecurityIntegrationTest`
     - In `court-booking-platform-service/src/test/java/gr/courtbooking/platform/integration/`, write a single end-to-end test that exercises: brute-force lockout → unlock email → unlock token redirect → counters cleared; suspicious-login challenge → confirm-login token → access token issued; CRITICAL alert published → STOMP push received → status transitioned via API → audit-trail row created
     - _Requirements: 5.1, 5.2, 5.5, 24.1, 24.3, 2.4_
 
-- [ ] 37. Smoke tests
-  - [ ] 37.1 Write `Phase7SecurityEndpointSmokeTest` (Platform Service)
+- [x] 37. Smoke tests
+  - [x] 37.1 Write `Phase7SecurityEndpointSmokeTest` (Platform Service)
     - In `court-booking-platform-service/src/test/java/gr/courtbooking/platform/integration/`, smoke-test every Phase 7 platform endpoint: `GET /api/admin/security/alerts*`, `*/ip-blocklist*`, `*/auto-response-config*`, `GET /api/auth/unlock/{token}`, `GET /api/auth/confirm-login/{token}`, `POST /api/admin/security/rotate-jwt-keys`. Assert each returns the correct status code for unauth (401), wrong role (403), and authorized (200/202/204)
     - _Requirements: 24, 25, 7, 5_
-  - [ ] 37.2 Write `TransactionServiceJwtSmokeTest`
+  - [x] 37.2 Write `TransactionServiceJwtSmokeTest`
     - In `court-booking-transaction-service/src/test/java/gr/courtbooking/transaction/integration/`, smoke-test every Phase 4–7 transaction endpoint with the new SecurityConfig: assert each returns 401 without JWT, 403 with wrong role, and 200/202 with correct role. Specifically verify the routes from Task 6.1's role matrix
     - _Requirements: 1.1–1.9_
-  - [ ] 37.3 Write `WebSocketUpgradeSmokeTest`
+  - [x] 37.3 Write `WebSocketUpgradeSmokeTest`
     - In `court-booking-transaction-service/src/test/java/gr/courtbooking/transaction/integration/`, smoke-test the Phase 5 WebSocket upgrade with Phase 7 interceptors: verify SUBSCRIBE to allowed destinations succeeds, disallowed destinations close with code 4002, oversize messages close with 4004, rate-limit exceedance closes with 4003, token-refresh sub-mismatch sends ERROR without close
     - _Requirements: 12.4–12.7, 13.1–13.5, 14.1–14.5_
-  - [ ] 37.4 Write `HealthCheckSmokeTest`
+  - [x] 37.4 Write `HealthCheckSmokeTest`
     - In both services, smoke-test that `/actuator/health` and `/actuator/health/liveness`, `/actuator/health/readiness` remain unauthenticated and return 200 (per Phase 7 permit-all rules)
     - _Requirements: 1.7_
 
-- [ ] 38. Documentation — Update implementation phases marker
-  - [ ] 38.1 Update `docs/implementation-phases.md` to mark Phase 7 complete
+- [x] 38. Documentation — Update implementation phases marker
+  - [x] 38.1 Update `docs/implementation-phases.md` to mark Phase 7 complete
     - Mark Phase 7 — Security Hardening as ✅ complete and link to the Phase 7 spec directory. Add a "Verification Notes" subsection summarizing the property-test coverage (30 properties), endpoint smoke-test coverage, and the runbook locations from Task 33.4
     - _Requirements: All Phase 7 requirements_
 
-- [ ] 39. Final checkpoint — Phase 7 acceptance
+- [x] 39. Final checkpoint — Phase 7 acceptance
   - Ensure `./gradlew :court-booking-common:allTests :court-booking-platform-service:allTests :court-booking-transaction-service:allTests` succeeds; `cd court-booking-admin-web && npm test -- --run && npm run lint` succeeds; Terraform `plan` and `kubeval` pass cleanly. The Phase7SecurityEndpointSmokeTest, TransactionServiceJwtSmokeTest, and WebSocketUpgradeSmokeTest all green. Ask the user for sign-off.
 
-- [ ] 40. CSRF codification (Req 10) — verify Phase 6a contract holds
-  - [ ] 40.1 Add `CSRF_VALIDATION_FAILED` error code to existing `CsrfValidationFilter`
+- [x] 40. CSRF codification (Req 10) — verify Phase 6a contract holds
+  - [x] 40.1 Add `CSRF_VALIDATION_FAILED` error code to existing `CsrfValidationFilter`
     - Update the existing Phase 6a `CsrfValidationFilter` in `court-booking-platform-service/src/main/java/gr/courtbooking/platform/security/csrf/` so that on token mismatch or absence (for state-changing requests where `Origin` header is present) it returns HTTP 403 with body `{"error":"CSRF_VALIDATION_FAILED"}` (exact constant per Req 10.4)
     - Verify the existing exempt prefixes are present and complete: `/internal/`, `/api/auth/oauth/`, `/api/auth/refresh`, `/api/auth/csrf-token`, `/actuator/`. Add any missing prefixes to match Req 10.4
     - On 30-minute session inactivity, the existing token rotation in `CsrfTokenController` SHALL cause subsequent state-changing requests to receive 403 `{"error":"CSRF_VALIDATION_FAILED"}` (per Req 10.5). Confirm the session-expiry behavior aligns with Phase 6a's 30-min idle timeout
     - _Requirements: 10.4, 10.5_
-  - [ ] 40.2 Admin Web — handle `CSRF_VALIDATION_FAILED` and redirect to login
+  - [x] 40.2 Admin Web — handle `CSRF_VALIDATION_FAILED` and redirect to login
     - In `court-booking-admin-web/src/services/`, update the existing axios response interceptor so that when a 403 response with body `{"error":"CSRF_VALIDATION_FAILED"}` is received, it (a) clears the in-memory CSRF token and auth state in the existing Zustand auth store, (b) redirects the user to `/login` with a flash banner indicating session expired (per Req 10.5)
     - Verify (do not change) existing Phase 6a behaviors: token retrieved via `GET /api/auth/csrf-token` after login (Req 10.2), stored in memory not localStorage (Req 10.2), session cookies have `HttpOnly; Secure; SameSite=Strict` (Req 10.3), `X-CSRF-Token` header on all POST/PUT/DELETE/PATCH (Req 10.1)
     - _Requirements: 10.1, 10.2, 10.3, 10.5_
-  - [ ]* 40.3 Write integration test for CSRF contract
+  - [x] 40.3 Write integration test for CSRF contract
     - Test happy-path token retrieval and use, missing token → 403 `CSRF_VALIDATION_FAILED`, mismatched token → 403, exempt prefix bypass, session-expiry → 403 → Admin Web redirects to login
     - _Requirements: 10.1–10.5_
 
-- [ ] 41. Webhook security hardening (Req 11)
-  - [ ] 41.1 Verify Stripe webhook signature with 5-minute timestamp tolerance
+- [x] 41. Webhook security hardening (Req 11)
+  - [x] 41.1 Verify Stripe webhook signature with 5-minute timestamp tolerance
     - **IMPORTANT:** The current `StripeWebhookController` always returns `200 OK` regardless of signature verification outcome (it catches all exceptions and returns 200 to prevent Stripe retries). Per Req 11.1, this must change: modify `StripeWebhookController.handleWebhook()` to return `400 Bad Request` with body `{"error":"INVALID_SIGNATURE"}` when signature verification fails, and `400 Bad Request` with body `{"error":"WEBHOOK_TIMESTAMP_OUT_OF_RANGE"}` when the timestamp tolerance check fails. Only return `200 OK` when the event is successfully verified and processed (or already deduplicated). The current "always 200" pattern is incorrect per the Phase 7 requirements
     - In the existing Phase 4 `StripeWebhookProcessingService` (Transaction Service), replace the manual `stripeConnectPort.verifyWebhookSignature()` call with the Stripe SDK's `Webhook.constructEvent(payload, signatureHeader, webhookSigningSecret)` which performs both signature verification AND timestamp tolerance checking. Configure the tolerance to 300 seconds (5 minutes) per Req 11.2
     - On signature failure or timestamp out of range, throw a specific `WebhookVerificationException` that the controller catches and maps to 400. Publish a SECURITY_ALERT (alertType=WEBHOOK_REPLAY, severity=MEDIUM) on timestamp-out-of-range rejections
     - On signature failure, log at WARN level including the source IP and message digest only (NEVER log the raw secret or full payload); do NOT process the event payload (per Req 11.5)
     - _Requirements: 11.1, 11.2, 11.5_
-  - [ ] 41.2 Separate Stripe Connect webhook signing secret on Platform Service
+  - [x] 41.2 Separate Stripe Connect webhook signing secret on Platform Service
     - In `court-booking-platform-service`, create `StripeConnectWebhookController` (or extend the existing one) that verifies signatures using the `${stripe.connect-webhook-secret}` value, distinct from the direct webhook secret used by the Transaction Service (per Req 11.4). Provision the new secret via External Secrets Operator (Task 33.2)
     - _Requirements: 11.4_
-  - [ ]* 41.3 Write integration tests for webhook signature verification
+  - [x] 41.3 Write integration tests for webhook signature verification
     - Test valid signature → 200, invalid signature → 400 `INVALID_SIGNATURE`, expired timestamp → 400 `WEBHOOK_TIMESTAMP_OUT_OF_RANGE` + WEBHOOK_REPLAY alert, replay protection
     - _Requirements: 11.1, 11.2, 11.5_
 
-- [ ] 42. TLS startup verification (Req 15.6)
-  - [ ] 42.1 Implement startup TLS handshake verification
+- [x] 42. TLS startup verification (Req 15.6)
+  - [x] 42.1 Implement startup TLS handshake verification
     - In BOTH services, add a Spring `ApplicationListener<ApplicationReadyEvent>` (`TlsStartupVerifier`) that performs a connectivity check against PostgreSQL, Redis, and Kafka with TLS enforced. On any TLS handshake failure, log `ERROR: TLS handshake failed for <service> at <host>:<port>` and call `System.exit(1)` so the pod refuses to start (per Req 15.6)
     - Skip the check in `local` profile where TLS is disabled
     - _Requirements: 15.3, 15.4, 15.5, 15.6_
 
-- [ ] 43. Kafka event payload UUID-only enforcement (Req 16.2)
-  - [ ] 43.1 Audit and enforce CONFIDENTIAL data exclusion from Kafka events
+- [x] 43. Kafka event payload UUID-only enforcement (Req 16.2)
+  - [x] 43.1 Audit and enforce CONFIDENTIAL data exclusion from Kafka events
     - Audit all event payload classes in `court-booking-common/src/main/java/gr/courtbooking/common/event/` (BookingEvent, NotificationEvent, SecurityAlertEvent, CourtEvent, payment events). For every event field that is a UUID reference (userId, courtId, bookingId), ensure NO sibling field carries the corresponding email, phone, or name (per Req 16.2)
     - Add a static analysis check via a Spotbugs / ArchUnit rule in `court-booking-common/src/test/java/gr/courtbooking/common/architecture/EventSchemaArchTest.java` that asserts: any field of a class in `gr.courtbooking.common.event` whose name matches `*Email|*Phone|*Name` causes the test to fail
     - For NotificationEvent payloads that legitimately need recipient info (template variables), use a `recipientUserId` field; the consumer resolves the email/phone/name at delivery time from its own DB read
     - _Requirements: 16.2_
 
-- [ ] 44. Stripe Connect re-verification on bank account change (Req 19.4) and Stripe API unavailability handling (Req 19.6)
-  - [ ] 44.1 Trigger re-verification on bank account change
+- [x] 44. Stripe Connect re-verification on bank account change (Req 19.4) and Stripe API unavailability handling (Req 19.6)
+  - [x] 44.1 Trigger re-verification on bank account change
     - In the existing Phase 4 Stripe Connect webhook handler, on `account.updated` events where `bankAccount.last4` differs from the previously stored value AND `requirements.eventually_due` includes bank-related items, set `users.stripe_connect_status='PENDING'` and persist the new IBAN hash to `users.previous_stripe_iban_hash`
     - Status remains PENDING until a subsequent `account.updated` webhook arrives with `charges_enabled: true` AND empty `requirements.currently_due`, at which point status transitions back to ACTIVE (per Req 19.4)
     - _Requirements: 19.4_
-  - [ ] 44.2 Reject bookings when Stripe API unreachable for status verification
+  - [x] 44.2 Reject bookings when Stripe API unreachable for status verification
     - In the booking creation flow on Platform Service, when `StripeConnectStatusService.verify(courtOwnerId)` cannot reach the Stripe API, reject the booking with `503 Service Unavailable` body `{"error":"STRIPE_VERIFICATION_TEMPORARILY_UNAVAILABLE","retryAfterSeconds":30}` (per Req 19.6). Emit `stripe_api_unavailable_total` metric. The next booking attempt re-verifies (no caching of UNREACHABLE state)
     - _Requirements: 19.6_
 
-- [ ] 45. CRITICAL alert → NOTIFICATION_REQUESTED to PLATFORM_ADMIN (Req 2.4)
-  - [ ] 45.1 Publish PLATFORM_ADMIN notifications on CRITICAL alert persist
+- [x] 45. CRITICAL alert → NOTIFICATION_REQUESTED to PLATFORM_ADMIN (Req 2.4)
+  - [x] 45.1 Publish PLATFORM_ADMIN notifications on CRITICAL alert persist
     - In `SecurityEventKafkaConsumer` (Task 21.1), when a persisted alert has severity=CRITICAL, publish a `NOTIFICATION_REQUESTED` event to the existing `notification-events` Kafka topic within 5 seconds of consumption. Target: all users with PLATFORM_ADMIN role (resolve via `UserRoleQueryPort.findByRole(PLATFORM_ADMIN)`). Set `urgency='CRITICAL'`, `channels=[EMAIL, PUSH]`, template=`SECURITY_ALERT_CRITICAL` with merge variables `{alertId, alertType, summary, ipAddress, userId}` (per Req 2.4)
     - _Requirements: 2.4_
 
-- [ ] 46. Output encoding and XSS prevention (Req 27)
-  - [ ] 46.1 Set explicit JSON content-type on both services
+- [x] 46. Output encoding and XSS prevention (Req 27)
+  - [x] 46.1 Set explicit JSON content-type on both services
     - In BOTH services, configure Spring's `MappingJackson2HttpMessageConverter` to set `Content-Type: application/json; charset=utf-8` on all JSON responses (per Req 27.1). Add an integration test that calls `/api/courts` and asserts the exact header value
     - _Requirements: 27.1_
-  - [ ] 46.2 Admin Web — ban `dangerouslySetInnerHTML` and add DOMPurify
+  - [x] 46.2 Admin Web — ban `dangerouslySetInnerHTML` and add DOMPurify
     - Add an ESLint rule (`react/no-danger`) to `court-booking-admin-web/.eslintrc.cjs` set to `error` so the build fails on any use of `dangerouslySetInnerHTML` (per Req 27.2)
     - Add `dompurify` as a dependency. Document an explicit exception path: any legitimate HTML rendering must wrap content in `DOMPurify.sanitize(html)` before passing to `dangerouslySetInnerHTML`, with an inline ESLint disable + justification comment subject to PR review
     - _Requirements: 27.2_
@@ -797,38 +797,38 @@ This plan implements Phase 7 across four codebases: `court-booking-common` (shar
     - **Validates: Requirements 16.1, 16.3, 16.4**
 
 
-- [ ] 48. Gap fixes — WebSocket origin restriction and message size alignment
-  - [ ] 48.1 Restrict WebSocket allowed origins in `WebSocketConfig`
+- [x] 48. Gap fixes — WebSocket origin restriction and message size alignment
+  - [x] 48.1 Restrict WebSocket allowed origins in `WebSocketConfig`
     - The current `WebSocketConfig.registerStompEndpoints()` uses `.setAllowedOriginPatterns("*")` which allows ANY origin to establish WebSocket connections. Update to use the same CORS allowlist as NGINX (Req 9.1): `https://admin.courtbooking.gr`, the mobile app web build domain, and `http://localhost:3000` for the `local` profile only. Inject the allowed origins via `@Value("${websocket.allowed-origins}")` from `application.yml` / `application-local.yml`
     - _Requirements: 9.1, 9.4, 12.1_
-  - [ ] 48.2 Reduce WebSocket transport message size limit to 64KB
+  - [x] 48.2 Reduce WebSocket transport message size limit to 64KB
     - The current `WebSocketConfig.configureWebSocketTransport()` sets `registration.setMessageSizeLimit(128 * 1024)` (128KB). Req 14.3 specifies 64KB (65,536 bytes). Update to `registration.setMessageSizeLimit(65_536)` so the transport layer rejects oversized frames before they reach the `MessageValidationInterceptor`. This ensures the interceptor's 64KB check is consistent with the transport limit
     - _Requirements: 14.3_
 
-- [ ] 49. Gap fixes — Stripe Connect `account.application.deauthorized` webhook handler
-  - [ ] 49.1 Implement `account.application.deauthorized` webhook handler
+- [x] 49. Gap fixes — Stripe Connect `account.application.deauthorized` webhook handler
+  - [x] 49.1 Implement `account.application.deauthorized` webhook handler
     - The current `StripeWebhookProcessingService` handles `account.updated` but does NOT handle `account.application.deauthorized`. Add a new case in the `switch(eventType)` block for `"account.application.deauthorized"`. On receipt: extract the Stripe account ID, resolve the court owner userId via the existing `users.stripe_connect_account_id` lookup, set `stripe_connect_status='DISABLED'`, store the current IBAN hash in `users.previous_stripe_iban_hash` (for Task 27.1 deauthorize→reauthorize detection), and publish a `COURT_EVENT` to the Platform Service via Kafka (or call the internal API) to hide all courts owned by that user
     - Publish a `NOTIFICATION_REQUESTED` event to notify the court owner via email within 5 minutes of webhook receipt (per Req 19.3)
     - Record the deauthorization timestamp in a Redis key `stripe:deauth:{userId}` with 8-day TTL so Task 27.1 can detect re-onboarding within 7 days
     - _Requirements: 19.3, 19.5_
 
-- [ ] 50. Gap fixes — IP blocklist entry cap enforcement (Req 7.1)
-  - [ ] 50.1 Enforce 100,000 entry maximum on IP blocklist
+- [x] 50. Gap fixes — IP blocklist entry cap enforcement (Req 7.1)
+  - [x] 50.1 Enforce 100,000 entry maximum on IP blocklist
     - In `IpBlocklistAdminService.add()` (Task 25.1), before adding a new entry, check the current count of entries in the Redis SET `ip:blocklist` plus the SORTED SET `ip:blocklist:cidr`. If the combined count is ≥ 100,000, reject the add request with `409 Conflict` body `{"error":"BLOCKLIST_CAPACITY_EXCEEDED","maxEntries":100000}` (per Req 7.1)
     - _Requirements: 7.1_
 
-- [ ] 51. Gap fixes — OpenAPI updates for Transaction Service (Req 29.5)
-  - [ ] 51.1 Update `docs/api/openapi-transaction-service.yaml` with Phase 7 security responses
+- [x] 51. Gap fixes — OpenAPI updates for Transaction Service (Req 29.5)
+  - [x] 51.1 Update `docs/api/openapi-transaction-service.yaml` with Phase 7 security responses
     - Add `401 Unauthorized` and `403 Forbidden` response schemas to ALL non-public Transaction Service endpoints in the OpenAPI spec. Document the role requirements per endpoint (CUSTOMER, COURT_OWNER, PLATFORM_ADMIN) via the `security` field. Add `429 Too Many Requests` response schema for rate-limited endpoints. Add `503 Service Unavailable` for JWKS-unavailable scenarios
     - _Requirements: 29.5, 1.1–1.9_
 
-- [ ] 52. Gap fixes — ScrapingDetectionFilter position correction
-  - [ ] 52.1 Register `ScrapingDetectionFilter` AFTER `SuspendedUserFilter` in Platform Service filter chain
+- [x] 52. Gap fixes — ScrapingDetectionFilter position correction
+  - [x] 52.1 Register `ScrapingDetectionFilter` AFTER `SuspendedUserFilter` in Platform Service filter chain
     - Per the design document's Platform Service filter chain diagram, `ScrapingDetectionFilter` runs AFTER `SuspendedUserFilter` (not before `ApiRateLimitFilter` as Task 16.1 originally stated). Update the Platform Service `SecurityConfig` to insert `ScrapingDetectionFilter` AFTER `SuspendedUserFilter` using `.addFilterAfter(scrapingDetectionFilter(), SuspendedUserFilter.class)`. This ensures suspended users are rejected before scraping detection runs (avoiding false-positive scraping alerts from blocked users retrying)
     - _Requirements: 6.1, 6.2_
 
-- [ ] 53. Gap fixes — Platform Service `SecurityConfig` extension for Phase 7 security endpoints
-  - [ ] 53.1 Add Phase 7 security admin endpoints to Platform Service `SecurityConfig`
+- [x] 53. Gap fixes — Platform Service `SecurityConfig` extension for Phase 7 security endpoints
+  - [x] 53.1 Add Phase 7 security admin endpoints to Platform Service `SecurityConfig`
     - The existing Platform Service `SecurityConfig` has `.requestMatchers("/api/admin/**").hasRole("PLATFORM_ADMIN")` which covers the new security admin endpoints. However, SUPPORT_AGENT read-only access (Req 24.1, 28.5) requires splitting the rule: `GET /api/admin/security/alerts*` and `GET /api/admin/security/alerts/summary` must allow SUPPORT_AGENT. Add explicit matchers: `.requestMatchers(HttpMethod.GET, "/api/admin/security/alerts/**").hasAnyRole("PLATFORM_ADMIN", "SUPPORT_AGENT")` and `.requestMatchers(HttpMethod.GET, "/api/admin/security/ip-blocklist").hasAnyRole("PLATFORM_ADMIN", "SUPPORT_AGENT")` BEFORE the catch-all `/api/admin/**` rule
     - Add permit-all rules for the new public token-based endpoints: `.requestMatchers("/api/auth/unlock/**").permitAll()` and `.requestMatchers("/api/auth/confirm-login/**").permitAll()` (these are accessed via email links without JWT)
     - _Requirements: 24.1, 28.5, 5.3, 5.5_
